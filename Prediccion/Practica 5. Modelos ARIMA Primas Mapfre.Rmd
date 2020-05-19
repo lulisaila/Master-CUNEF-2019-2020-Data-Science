@@ -1,0 +1,225 @@
+---
+title: "Practica 5"
+author: "Lucia Saiz Lapique"
+date: "11/11/2019"
+output: pdf_document
+---
+
+```{r, echo = FALSE, message = FALSE}
+library(forecast)
+library(xts)
+library(ggplot2)
+library(ggfortify)
+library(readr)
+library(tidyverse)
+library(dplyr)
+```
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+mapfre <- read_delim("C:/Users/Luli/Desktop/Master_Data_Science_CUNEF_2019/Prediccion/Practicas/Tarea 5/Clase 5 predicción/Primas_mapfre.csv", ";", escape_double = FALSE, col_types = cols(Fecha = col_date(format = "%m/%d/%Y")),
+                     locale = locale(decimal_mark = ","), trim_ws = TRUE)
+```
+
+
+
+Primera variable
+
+```{r}
+xMapfre <- xts(mapfre$Primas_vida, order.by = as.Date(mapfre$Fecha,"%Y%m%d"), frequency = 4)
+```
+
+```{r}
+xMapfre <- to.quarterly(xMapfre)
+```
+
+```{r}
+zMapfre <- as.zoo(xMapfre$xMapfre.Close)
+```
+
+```{r}
+names(zMapfre) = "Mapfre"
+```
+
+```{r}
+autoplot(zMapfre) + ggtitle("Primas Vida Trimestrales Mapfre") + xlab("Trimestres") + ylab("Primas")
+```
+
+```{r}
+ggfreqplot(as.ts(zMapfre), freq = 4, nrow = 1, facet.labeller = c("1T","2T","3T","4T")) + ggtitle("Primas Vida Trimestrales")
+```
+
+```{r}
+cOmit = 4
+nObs = length(zMapfre)
+```
+
+```{r}
+oMapfre <- window(zMapfre, start = index(zMapfre[1]), end = index(zMapfre[nObs - cOmit]))
+```
+
+```{r}
+etsfit <- ets(oMapfre) 
+fprimas.ets <- forecast(etsfit)
+summary(fprimas.ets)
+```
+
+```{r}
+plot(fprimas.ets)
+lines(window(zMapfre),type = "o")
+```
+
+```{r}
+matrix(c(fprimas.ets$mean[1:cOmit], zMapfre[(nObs - cOmit + 1):nObs]), ncol = 2)
+```
+
+```{r}
+etsfit2 <- ets(oMapfre, damped = TRUE)
+fprimas.ets2 <- forecast(etsfit2)
+summary(fprimas.ets2)
+```
+
+```{r}
+plot(fprimas.ets2)
+lines(window(zMapfre),type = "o")
+```
+
+```{r}
+matrix(c(fprimas.ets2$mean[1:cOmit],fprimas.ets$mean[1:cOmit],zMapfre[(nObs - cOmit + 1):nObs]),ncol = 3)
+```
+
+```{r}
+plot(fprimas.ets2)
+lines(window(zMapfre),type = "o")
+lines(fprimas.ets$mean,type = "o", col = "red")
+```
+
+
+
+Segunda variable
+
+```{r}
+xMapfre2 <- xts(mapfre$Primas_no_vida, order.by = as.Date(mapfre$Fecha,"%Y%m%d"),frequency = 4)
+```
+
+```{r}
+xMapfre2 <- to.quarterly(xMapfre2)
+```
+
+```{r}
+zMapfre2 <- as.zoo(xMapfre2$xMapfre2.Close)
+```
+
+```{r}
+names(zMapfre2) = "Mapfre"
+```
+
+```{r}
+autoplot(zMapfre2) + ggtitle("Primas No Vida Trimestrales Mapfre") + xlab("Trimestres") + ylab("Primas")
+```
+
+```{r}
+ggfreqplot(as.ts(zMapfre2), freq = 4, nrow = 1, facet.labeller = c("1T","2T","3T","4T")) + ggtitle("Primas No Vida Trimestrales")
+```
+
+```{r}
+nObs = length(zMapfre2)
+```
+
+```{r}
+oMapfre2 <- window(zMapfre2, start = index(zMapfre2[1]), end = index(zMapfre2[nObs - cOmit]))
+```
+
+```{r}
+etsfit2 <- ets(oMapfre2) 
+```
+
+```{r}
+fnoprimas.ets <- forecast(etsfit2)
+summary(fnoprimas.ets)
+```
+
+```{r}
+plot(fnoprimas.ets)
+lines(window(zMapfre2),type = "o")
+```
+
+
+```{r}
+matrix(c(fnoprimas.ets$mean[1:cOmit], zMapfre2[(nObs - cOmit + 1):nObs]), ncol = 2)
+```
+
+```{r}
+etsfit2 <- ets(oMapfre, damped = TRUE)
+fprimas.ets2 <- forecast(etsfit2)
+summary(fprimas.ets2)
+```
+
+```{r}
+matrix(c(fprimas.ets2$mean[1:cOmit], fprimas.ets$mean[1:cOmit], zMapfre[(nObs - cOmit + 1):nObs]),ncol = 3)
+```
+
+```{r}
+plot(fprimas.ets2)
+lines(window(zMapfre), type = "o")
+lines(fprimas.ets$mean, type = "o",col = "red")
+```
+
+
+ARIMA
+
+```{r}
+df_new <- data.frame(value = as.vector(zMapfre),
+                     time = time(zMapfre))
+fit1 = auto.arima(oMapfre,lambda = 0)
+summary(fit1)
+```
+
+```{r}
+ggtsdisplay(fit1$residuals)
+```
+
+```{r}
+#box-Ljung Test
+Box.test(fit1$residuals,lag = 4, fitdf = 3, type= "Lj") # residuos, error del modelo, 
+# no tiene info que los explique y por tanto es ruido blanco
+Box.test(fit1$residuals,lag = 8, fitdf = 3, type = "Lj") # el error se encuentra dentro 
+# de las bandas, dentor del intervalo de confianza, asi que efectivamente, 
+# es ruido blanco
+Box.test(fit1$residuals,lag = 12, fitdf = 3, type = "Lj")
+# hemos tenido que estimar tres parametros para sacar el p valor
+
+# como todos son superiores a 0.05, no son significativos, y por tanto, es ruido blanco. No dependen de los anteriores. 
+```
+
+```{r}
+fprimas.arima = forecast(fit1)
+ggplot(df_new) + geom_point(aes(x = time, y = value)) + geom_line(aes(x = time, y = value)) + geom_forecast(fprimas.arima,alpha = 0.4) + ggtitle("ARIMA: Predicción Primas")
+```
+
+
+```{r}
+df_new2 <- data.frame(value = as.vector(zMapfre2),
+                     time = time(zMapfre2))
+fit2 = auto.arima(oMapfre2, lambda = 0)
+summary(fit2)
+```
+
+```{r}
+ggtsdisplay(fit2$residuals)
+```
+
+```{r}
+#box-Ljung Test
+Box.test(fit2$residuals,lag = 4, fitdf = 3, type = "Lj") # residuos, error del modelo, 
+# no tiene info que los explique y por tant o es ruido blanco
+Box.test(fit2$residuals,lag = 8, fitdf = 3, type = "Lj") # el error se encuentra dentro 
+# de las bandas, dentor del intervalo de confianza, asi que efectivamente, 
+# es ruido blanco
+Box.test(fit2$residuals,lag = 12, fitdf = 3, type = "Lj")
+# hemos tenido que estimar tres parametros para sacar el p valor
+```
+
+```{r}
+fprimas.arima2 = forecast(fit2)
+ggplot(df_new2) + geom_point(aes(x = time, y = value)) + geom_line(aes(x = time, y = value)) + geom_forecast(fprimas.arima2, alpha = 0.4) + ggtitle("ARIMA: Predicción Primas No Vida")
+```

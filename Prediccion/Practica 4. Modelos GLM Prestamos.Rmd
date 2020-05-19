@@ -1,0 +1,318 @@
+---
+title: 'Practica 4: Modelos GLM'
+author: "Lucia Saiz Lapique"
+date: "5/11/2019"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+# Indice
+## Introducción
+## Librerías y base de datos
+## Gráficos de correlación
+## Modelos GLM
+## Comparación modelos
+## Cross validation: Train y test 
+## Predicción
+## Matriz de confusión
+## Curva ROC
+## Cut-off óptimo
+
+---------
+INTRODUCCIÓN:
+---------
+
+A continuación, realizaremos un estudio de la base de datos "loans", conjunto de datos que representa los préstamos impagados y numerosas características de cada caso, entre ellas fecha, tipo de interés, sueldo a nual de los clientes, etc. El objetivo es calcular un modelo que calcule cuántas préstaoms se quedan impagados o acaban en "default", basandonos en las características que se dieron sobre los clientes que pidieron esos préstamos. Contamos con una base de datos en la que se incluyen más de 880.000 muestras con numerosas variables, que son tanto categóricas como numéricas. 
+
+Debido a que nuestra base de datos es muy grande y que hay muchas variables vacías, decidimos filtrar previamente la tabla con SQL. Finalmente, elegimos las variables más relevantes para nuestro modelo sy eliminamos los datos NULL y NA, acabando con una base de datos de 432.000 muestras y 15 variables. Las variables categóricas como los meses, las notas o el tipo de hogar que tenía cada cliente deberán factorizarse para usarse tanto en los gráficos como al generar los modelos, al igual que crear dummies para el modelo binomial. 
+
+Para averiguar cuál es el modelo más preciso, realizamos previamente un estudio de los datos. Debemos identificar qué variables son catégoricas, dummies (1, 0) y numéricas, además de buscar la correlación entre ellas. Debemos señalar que la correlación solo podrá ser estudiada en las variables numéricas, pues entre variables catégoricas no es posible. 
+
+Tras eso, antes de ir directamente a la predicción del error medio, creamos un modelo que incluya a las variables que consideremos relevantes, para, de ahí, empezar a descartar las no relevantes. Utilizaremos el método "glm", que utiliza el grado de libertad de cada variableespecificamente de la "familia" binomial, es decir que la variable que vamos a estudiar es de tipo "dummie" (resultado si o no, 1 o 0). 
+
+Después, hacemos un entrenamiento y un test para poder hacer la predicción del error medio que nos dará nuestro modelo al intentar predecir el número de préstamos que no se devuelven según las variables que hemos seleccionado. 
+
+A continuación, nos descargamos la base de datos que queremos utilizar con read_csv y la metemos en un nuevo objeto para facilitar su uso y llamamos a todas las librerías que vamos a utilizar durante el trabajo.
+
+-----------
+LIBRERÍAS Y BASE DE DATOS:
+-----------
+
+Hacemos un pequeño resumen de los datos en el que vemos cosas muy generales como valores mínimos y máximos o la media de cada variable. A simple vista esto no nos proporciona mucha información acerca de las variables que son más o menos relevantes para nuestro modelo, pero nos ayuda a ver cuáles son catégoricas o dummies y que después tendremos que descartar al hacer correlaciones, por ejemplo. 
+
+```{r, echo = FALSE, message = FALSE}
+# librerias
+library(knitr)
+library(rmarkdown)
+library(ISLR)
+library(ggplot2)
+library(ggfortify)
+library(boot)
+library(verification)
+library(ROCR)
+library(readr)
+library(corrplot)
+library(dplyr)
+library(tidyverse)
+library(rsample)
+library(skimr)
+library(tidyverse)
+library(glmnet)
+library(PerformanceAnalytics)
+library(dummies)
+library(caret)
+```
+
+
+```{r, echo = FALSE}
+loans <- read_csv("loansR.csv", 
+col_types = cols(int_rate = col_number(), 
+revol_util = col_number()))
+
+loans <- na.omit(loans)
+```
+
+```{r, echo = FALSE, results = FALSE, message = FALSE, warning = FALSE}
+summary(loans)
+sapply(loans, sd)
+```
+
+```{r, echo = FALSE, results = FALSE}
+skim(loans)
+```
+
+Como vemos, las variables que son categóricas son "issue_d", "loan_status", "home_ownership", "term" y "grade". Son variables que perfectamente podrían afectar al resultado de nuestra predicción y a tener en cuenta para hacer el modelo; sin embargo, para el siguiente paso, que es analizar los datos y sacar correlaciones entre ellos, estas variables nos dan problemas. 
+
+La correlación de variables muestra tendencias de crecimiento cuando las variables a comparar tienen valores mayores y de descenso cuando los valores osn menores. Sin embargo, en las variables categóricas, se les asocia un valor que representa la característica específica de ese modelo, cuyo valor "numérico" no es representativo del valor calificativo que tienen. Por ello, en los gráficos a continuación no incluiremos estas variables.
+
+--------
+GRÁFICOS DE CORRELACIÓN:
+--------
+
+Filtramos la base de datos "loans" de forma que aislamos únicamente las variables cuantitativas para estudiar la correlación entre ellas y cremaos el gráfico.
+
+```{r, echo = FALSE}
+loans_num <- dplyr::select(loans, c(-grade, -home_ownership, -issue_d, -loan_status, -term))
+correlacion <- round(cor(loans_num), 1)
+corrplot(correlacion, method = "number", type = "upper")
+```
+
+Las correlaciones son muy pequeñas pero, podemos sacar que, por ejemplo, existe una relación negativa entre los impagados en los dos últimos años y los meses desde el último impagado. Luego también vemos como el saldo rotativo  esta ligeramente relacionado con la cantidad del préstamo y el sueldo anual del cliente. También hay una relación entre el sueldo anual y la cantidad del préstamo. 
+
+
+----------
+MODELOS GLM:
+----------
+
+## Selección y transformación de variables
+
+Para crear nuestro modelo, como queremos formar una regresión de tipo binario, necesitamos que todas las variables que utilicemos sean o numéricas o dummies (en caso de categóricas). Para ello, primero seleccionamos las variables que son más influyentes en la devolución de préstamos. Si no hiciesemos este filtro de los datos, obtendríamos un modelo overfitted. 
+
+Identificams cuáles son categóricas dentro de las que hemos elegido y las hacemos dummies para poder meterlas en el modelo. Estas son las variables "grades", "term" y "loan_status", esta última siendo la variable aobre la cual queremos calcular el modelo. Al convertirlas en dummies desaparecen y se crean nuevas columnas de 1 y 0 por cada característica de esa variable, a xecepcion de "loan_status", que transformamos directamente en una dummie agrupando por pagados e impagados. 
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+loans <- dummy.data.frame(loans)
+
+loans <- dummy.data.frame(loans,
+                                  names = "grade")
+loans <- dummy.data.frame(loans,
+                                  names = "term")
+```
+
+
+
+```{r, echo = FALSE}
+loans$loan_status <- as.factor(loans$loan_status)
+loans$loan_status <- as.numeric(loans$loan_status)
+loans$loan_status[loans$loan_status == 1 | loans$loan_status == 3 | loans$loan_status == 4] <- 1
+loans$loan_status[loans$loan_status == 2 | loans$loan_status == 5 | loans$loan_status == 6 | loans$loan_status == 7 | loans$loan_status == 8 | loans$loan_status == 9 | loans$loan_status == 10] <- 0
+
+loans$loan_status <- as.factor(loans$loan_status)
+```
+
+Creamos la base de datos final con las variables que hemos dado por principales y que utilizaremos en el modelo. Hemos descartado las variables "issue_d", "funded_amt" y "home_ownership" y vemos también las nuevas variables creadas "dummies". A continuación un resumen de las variables que decidimos incluir en nuestra nueva base de datos:
+```{r, echo = FALSE}
+loans <- transform(loans, dti2 = dti/100)
+loans <- transform(loans, int_rate2 = int_rate/100)
+loans <- transform(loans, revol_util2 = revol_util/100)
+Final_loans <- dplyr::select(loans, c(-dti, -revol_util, -int_rate, -issue_d, -funded_amnt, -home_ownership))
+summary(Final_loans)
+```
+
+
+## Modelo 1
+
+Creamos el primer modelo usando el método GLM binomial, donde introducimos todas las variables de la base de datos filtrada. En este caso, eso incluye las variables numéricas (a las que se le aplica su respectivo DOF), las categóricas (que hemos convertido en dummies). Descartamos gradeG y term60, que seguiremos descartando de aquí en adelante, porque R ya las incluye cuando no se da el caso de ninguna otra variable dummie.
+
+```{r, echo = FALSE, warning = FALSE}
+mod01 <- glm(loan_status ~. -gradeG -term60.months, data=Final_loans, family="binomial", maxit = 100)
+summary(mod01)
+```
+Vemos como hay variables que nos aportan más o menos información en el modelo, es decir, que hay variables mucho mas influye. En base a el breve resumen que hemos creado del modelo, comenzamos a decidir qué variables vamos a eliminar en los siguientes modelos que puedan ser irrelevantes.
+
+## Modelo 2
+
+Creamos un nuevo modelo eliminando la variable "revol_bal" y "mths_since_last_delinq", que en el resumen del modelo anterior hemos visto que son las menos influyentes, para estudiar si obtenemos menos error con menso variables más influyentes. 
+
+```{r, echo = FALSE, warning = FALSE, results = FALSE}
+mod02 <- glm(loan_status ~. -gradeG -term60.months -revol_bal - mths_since_last_delinq, data=Final_loans, family="binomial", maxit = 100)
+summary(mod02)
+```
+
+----------
+COMPARACIÓN DE MODELOS: ANOVA
+----------
+
+Tras formar nuestros dos modelos (no hacemos más porque ya hemos filtrado mucho la base de datos), utilizamos la función anova para que nos indique cuál es el modelo que tiene el menor error residual y que será, en consecuencia, el que utilicemos para nuestra predicción. Los resultados son los siguientes:
+
+```{r, echo = FALSE, warning = FALSE, results = "hide"}
+anova(mod01, mod02, test='LRT')
+```
+
+Modelo 1: Error residual de 432770
+
+Modelo 2: Error residual de 432772
+
+Tras anova, vemos como el mejor modelo es el primero que hicimos con casi todas las variables aunque le saque muy poco margen de error al segundo modelo, en el que eliminamos las variables menos relevantes. Con esto en mente, pasamos al siguiente paso, que es la validación de los modelos.
+
+-----------
+CROSS VALIDATION: TRAIN Y TEST
+-----------
+
+Realizamos el entrenamiento y testing de nuestro primer modelo para obtener el error final. 
+
+```{r split, echo = FALSE, results = 'hide'}
+set.seed(1)
+train <- sample(nrow(Final_loans), 0.7 * nrow(Final_loans))
+
+Loans.train <- Final_loans[train,]
+
+
+Loansx <- Final_loans[-train,]
+
+
+nrow(Loans.train)
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE, results = FALSE}
+mod01_train <- glm(loan_status ~. -gradeG -term60.months, data=Loans.train, family="binomial", maxit = 100)
+summary(mod01_train)
+```
+
+-----------------
+PREDICCIÓN:
+-----------------
+
+
+El resultado que obtenemos es de una media de acierto en los casos sobre la predicción de un 0.9432981, es decir, contamos con un modelo que acierta los préstamos que están impagados en un 94.33% de los casos.
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+# Predecir el test.  
+glm.probs <- predict(mod01_train, Loansx, type = "response")
+
+# Crear un vector para guardar los resultados (No default) 
+glm.pred <- rep("0", nrow(Loansx))
+
+# Reemplazar NO por YES cuando la probabilidad es mayor del 20%
+glm.pred[glm.probs > .2] = "1"
+
+# Crear un vector con los resultados
+defaultVector <- Loansx$loan_status 
+
+
+# Calculala media  
+mean(glm.pred == defaultVector)
+```
+
+----------------------
+MATRIZ DE CONFUSIÓN:
+----------------------
+
+Para ver cuantos falsos positivos nos general el modelo, que sería el caso de los préstamos que se quedarán sin pagar, a pesar de que mi modelo ha identificado como que sí se iban a pagar (perdemos el dinero). Es el peor de los dos errores (el otro siendo que nos dice que no se van a pagar los préstamos que sí se pagarían; perdemos la oprtunidad de prestar pero no perdemos dinero)
+
+```{r, echo = FALSE}
+prob.glm1.insample <- predict(mod01_train, type = "response")
+predicted.glm1.insample <- prob.glm1.insample > 0.2
+predicted.glm1.insample <- as.numeric(predicted.glm1.insample)
+```
+
+Realizamos dos matrices de confusión, una sobre la parte de train y otra sobre la parte de test, ya que la parte de train nos muestra como se ajustan los datos y la de test nos muesra como de precisa es la respuesta, es decir, como se ajusta nuestro modelo frente a futuros datos. 
+
+## Matriz de confusión sobre el train
+
+```{r, echo = FALSE}
+confusionMatrix(data = as.factor(predicted.glm1.insample), reference = as.factor(Loans.train$loan_status), dnn = c("Predicted", "Real cases"))
+```
+
+Al realizar esta función, R nos devuelve una serie de datos, de los cuales nos interesan accuracy, sensitivity y specifity. En accuracy nos dice que nuestro modelo con una precisión del 94.31%, sensitivity que hay una cantidad de verdaderos positivos devuelta del 98.99% y specificity que hay un 3.55% de falsos positivos. 
+
+## Matriz de confusión sobre el test
+
+```{r, echo = FALSE}
+prob.glm1.outsample <- predict(mod01_train, Loansx, type = "response")
+predicted.glm1.outsample <- prob.glm1.outsample > 0.2
+predicted.glm1.outsample <- as.numeric(predicted.glm1.outsample)
+```
+
+```{r, echo = FALSE}
+confusionMatrix(data = as.factor(predicted.glm1.outsample), reference = as.factor(Loansx$loan_status), dnn = c("Predicted", "Real cases"))
+```
+
+Sobre la parte de test obtenemos incluso mejores resultados, obteniendo una precisión del 94.33%, una probabilidad de verdaderos positivos del 99% y de falsos positivos del 3.19%. 
+
+Como conlusión, decimos que nuestro modelo se ajusta mucho a la realidad, teniendo muy poca probabilidad del error más importante. 
+
+
+---------------
+CURVA ROC:
+---------------
+
+La curva ROC es una representación gráfica de la sensibilidad frente a la especificidad para un sistema clasificador binario según se varía el umbral de discriminación. Esta gráfica se genera a partir de los verdaderos positivos y de los falsos negtaivos, mostrándonos cuánto se acerca nuestro modelo a uno u otro. 
+
+Lo ideal es que nuestra curva se acerque lo máximo posible al eje de las Y, es decir, al eje que representa los verdaderos positivos. A nevel numérico, eso se calcularía buscando el área debajo de la curva, y cuánto mayor sea, mejor. 
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+roc.plot(Loansx$loan_status == '1', prob.glm1.outsample)$roc.vol
+```
+
+En nuestro caso, tenemos un área de 0.7178989, que se considera como bueno, y gráficamente vemos que también esta bien, pues se aleja bastante de la línea de datos reales (la recta). 
+
+
+-------------------
+CUT-OFF ÓPTIMO:
+-------------------
+
+Para finalizar, decidimos a qué clientes les haremos los préstamos utilizando nuestro modelo según un punto de decisión conocido como "Cut-off".En cierto punto de la gráfica de cut-off existe un lugar que hace que mi coste sea mínimo y ese es el que elegimos. Estamos deciciendo por nuestro coste, no por nuestra matriz de confusión. 
+Busco que mi modelo predictivo haga mejor predidcción en el falso positivo que en el falso negativo. 
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+#define the searc grid from 0.01 to , ejemplo forzado
+searchgrid = seq(0.01, 0.99, 0.01)
+#result is a 99x2 matrix, the 1st col stores the cut-off p, the 2nd column stores the cost
+result = cbind(searchgrid, NA)
+#in the cost function, both r and pi are vectors, r=truth, pi=predicted probability
+cost1 <- function(r, pi){
+  weight1 = 2  # penalizo mucho la morosidad, mismo de antes pero más valor a un error
+  weight0 = 1
+  c1 = (r==1)&(pi<pcut) #logical vector - true if actual 1 but predict 0
+  c0 = (r==0)&(pi>pcut) #logical vector - true if actual 0 but predict 1
+  return(mean(weight1*c1+weight0*c0))
+}
+# training y prediccion
+mod_cutoff <- glm(loan_status ~. -gradeG -term60.months, data=Loans.train, family="binomial", maxit = 100);
+prob <- predict(mod_cutoff,type="response")
+for(i in 1:length(searchgrid))
+{
+  pcut <- result[i,1]
+  #assign the cost to the 2nd col
+  result[i,2] <- cost1(Loans.train$loan_status, prob)  
+}
+plot(result, ylab="Cost in Training Set")
+```
+
+```{r, echo = FALSE, results = FALSE}
+result[which.min(result[,2]),]
+```
+
+Nuestro cut off sería 0.78, que representa el menor coste en función al peso que he elegido. A partir de 0.78 de probabilidad de default, no damos el préstamos.  

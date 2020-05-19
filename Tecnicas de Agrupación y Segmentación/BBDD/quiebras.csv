@@ -1,0 +1,59 @@
+banco;quiebra;Activo Circulante / Activo Total;Activo circulante - caja / Activo Total;Activo circulante / deudas;Reservas / deudas;Beneficio neto / Activo Total;Beneficio neto / Fondos propios;Beneficio Netos / Deudas;Coste de Ventas / Ventas;Cash flow / deudas
+ B Union;quebrado;0.24;0.17;0.24;0.01;0;0.08;0;0.96;0
+ B Mas Sarda;quebrado;0.29;0.22;0.3;0.01;-0.02;-0.81;-0.02;1.2;-0.01
+ B Levante;quebrado;0.48;0.39;0.5;0.03;0;0.04;0;0.95;0
+ B Catalana;quebrado;0.31;0.19;0.31;0.01;0;0.09;0;0.93;0
+ B Ind Cat;quebrado;0.22;0.17;0.23;0.02;0;0.06;0;0.92;0
+ B Barcelona;quebrado;0.44;0.34;0.46;0.01;0;0.02;0;0.94;0
+ B Gerona;quebrado;0.28;0.24;0.31;0.01;0;0.01;0;0.93;0.01
+ B Alicante;quebrado;0.3;0.23;0.32;0.01;0;0.06;0;0.9;0.01
+ B Cred e Inv;quebrado;0.33;0.22;0.34;0.01;0;0.04;0;0.97;0
+ B Pirineos;quebrado;0.46;0.35;0.51;0.06;0.01;0.06;0.01;0.86;0.01
+ B Madrid;quebrado;0.58;0.49;0.61;0.02;0;0;0;0.97;0
+ B de Navarra;quebrado;0.6;0.49;0.65;0.02;0;0.03;0;0.7;0
+ B Cant brico;quebrado;0.48;0.28;0.5;0.01;0;0.05;0;0.94;0
+ B Meridional;quebrado;0.56;0.25;0.59;0.02;-0.01;-0.22;-0.01;1.35;-0.01
+ B Valladolid;quebrado;0.43;0.33;0.45;0;0.01;0.12;0.01;0.86;0.01
+ B de Cred Comerc;quebrado;0.45;0.23;0.49;0.02;0;0;0;0.99;0
+ B de Pr‚st y Ahorro;quebrado;0.37;0.22;0.39;0;-0.05;-1.07;-0.06;1.37;-0.02
+ B Descuento;quebrado;0.32;0.28;0.35;0.01;0;0;0;0.91;0.01
+ B Com Occ;quebrado;0.28;0.14;0.3;0.02;0;0.05;0;0.94;0.01
+ B Occid;quebrado;0.37;0.2;0.39;0.01;0;0.07;0;0.93;0
+ B Ind Med;quebrado;0.23;0.15;0.23;0.01;0;-0.1;0;1.02;0
+ B Cat Desarr;quebrado;0.39;0.27;0.41;0.01;0;0;0;0.97;0
+ B Prom Neg;quebrado;0.22;0.18;0.23;0.01;0;0;0;0.88;0.01
+ B Lopez Q;quebrado;0.36;0.3;0.38;0.02;-0.08;-1.74;-0.09;1.27;-0.02
+ B Asturias;quebrado;0.46;0.38;0.49;0.01;0.01;0.1;0.01;0.88;0.01
+ B Granada;quebrado;0.3;0.25;0.31;0.01;0;0.09;0;0.92;0
+B Sime¢n;quebrado;0.33;0.22;0.34;0.03;0;0.04;0;0.93;0.01
+B de Exp Ind;quebrado;0.26;0.17;0.28;0.05;0;0.03;0;0.9;0.01
+B Garriga Nogu‚s;quebrado;0.42;0.32;0.43;0.01;0;0.12;0;0.9;0.01
+B de Progreso;solvente;0.24;0.15;0.25;0.03;0.02;0.3;0.02;0.7;0.02
+B Ind Bilbao;solvente;0.34;0.21;0.35;0.03;0;0.08;0;0.79;0.02
+B Interc Esp;solvente;0.36;0.32;0.38;0.03;0.01;0.16;0.01;0.87;0.01
+B Comerc Trans;solvente;0.46;0.32;0.48;0.03;0.01;0.18;0.01;0.88;0.01
+B de Comercio;solvente;0.31;0.26;0.32;0.02;0;0.05;0;0.92;0.01
+B Jover;solvente;0.46;0.29;0.49;0.03;0.01;0.09;0.01;0.86;0.01
+B de Vitoria;solvente;0.56;0.39;0.61;0.03;0.01;0.15;0.01;0.77;0.02
+B Pueyo;solvente;0.62;0.46;0.66;0.05;0.01;0.22;0.01;0.76;0.02
+B de Cr‚d Balear;solvente;0.34;0.26;0.36;0.01;0.01;0.19;0.01;0.85;0.01
+B Huesca;solvente;0.31;0.23;0.32;0.01;0;0.12;0;0.86;0.01
+B Fomento;solvente;0.37;0.2;0.4;0.03;0.01;0.13;0.01;0.86;0.01
+B Pastor;solvente;0.31;0.21;0.31;0.02;0;0.11;0;0.91;0.01
+B de Castilla;solvente;0.34;0.22;0.35;0.03;0.01;0.36;0.01;0.72;0.02
+B Guipuzcoano;solvente;0.44;0.34;0.46;0.02;0;0.12;0;0.88;0.01
+B de Galicia;solvente;0.39;0.2;0.41;0.02;0.01;0.26;0.01;0.86;0.01
+B Hisp Ind;solvente;0.23;0.09;0.24;0.03;0.01;0.31;0.01;0.75;0.02
+B March;solvente;0.44;0.31;0.46;0.05;0.01;0.15;0.01;0.84;0.01
+B Depositos;solvente;0.63;0.09;0.78;0.2;0.02;0.12;0.03;0.71;0.03
+B Herrero;solvente;0.46;0.35;0.48;0.03;0.01;0.31;0.01;0.8;0.02
+B Sabadell;solvente;0.5;0.35;0.53;0.03;0.01;0.23;0.01;0.78;0.02
+B P y M E;solvente;0.29;0.15;0.33;0.08;0.01;0.08;0.01;0.74;0.01
+B Int de Comer;solvente;0.22;0.16;0.23;0.01;0;0.11;0;0.87;0.01
+B Zaragozano;solvente;0.33;0.2;0.34;0.01;0;0.15;0;0.89;0.01
+B Comercial Esp;solvente;0.47;0.37;0.52;0.03;0.01;0.09;0.01;0.83;0.02
+B Merc Tarragona;solvente;0.4;0.31;0.42;0;0;0.04;0;0.93;0
+B Abel Matutes;solvente;0.55;0.37;0.59;0.04;0.02;0.3;0.02;0.72;0.03
+B Fin Ind;solvente;0.31;0.24;0.33;0.03;0;0.1;0;0.84;0.01
+Sind banqueros B;solvente;0.77;0.49;0.81;0.02;0.01;0.1;0.01;0.9;0.01
+B de Europa;solvente;0.41;0.28;0.44;0.02;0;0.06;0;0.88;0.01

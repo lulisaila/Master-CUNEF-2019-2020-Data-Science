@@ -1,0 +1,244 @@
+---
+title: "Práctica 2 Machine Learning"
+author: "Lucia Saiz Lapique"
+date: "8/11/2019"
+output:
+  html_document:
+    df_print: paged
+---
+# Assignment
+
+
+1. Test the *TestGradientDescent* function with the training set (*4_1_data.csv*). Obtain the confusion matrix. 
+
+2. Obtain a graph representing how the cost function evolves depending of the number of iterations.
+
+3. Explore other options using the *optim* function (see the methods section of the documentation). Explore other ways in R for estimating the Gradient Descent. 
+
+4. Explain why is not a trivial task to calculate the Gradient Descent. What happens if we have a very high dimensional problem?
+
+5. Optional (+0.5 - 1 points in final grade). 
+
+    + Implement the algorithm step by step using the update rule and an iterative algorithm, do not use the *optim* function.
+    + Research about regularization in logistic regression and explain it. 
+
+Explain your work results using the **RMarkdown format**. 
+
+
+## Carga de datos y anális exploratorio de variables
+
+El objetivo del ejercicio es realizar una regresión numérica con un entrenamiento y un test, que muestre como de dependiente es la variable label respect a score1 y score2, y como de explicativas son ellas. 
+
+En primer lugar descargamos la base de datos y la guardamos en un objeto llamado "alumnos", para facilitar su uso. Después, para también facilitar su uso, le cabiamos el nombre a las variables score-1 y score-2. 
+
+```{r, message = FALSE}
+library(readr)
+alumnos <- read_csv("4_1_data.csv")
+names(alumnos)[1] <- "score1"
+names(alumnos)[2] <- "score2"
+```
+
+A continuación haremos un análisis exploratorio de la base de datos con la que contamos para realizar los ejercicios. La base de datos "alumnos" esta formada por tres variables y 100 muestras, que representan las notas en dos examenes de 100 alumnos, que ayudan a decidir si ese alumno es admitido en la univerdidad o no. Las varibales son:
+- score1: variable numérica que representa la nota que sacó el alumno en el primer examen
+- score2: variable numérica que representala nota que sacó el alumno en el segundo examen
+- label: variable "dummie", formada por 1 y 0, que representa si el alumno entró en la universidad (1) o no (0).
+
+En primer lugar, ejecutamos un resumen de las variables: 
+```{r}
+library(skimr)
+summary(alumnos)
+skim(alumnos)
+```
+Estos dos tipos de resumenes nos ofrecen información sobre la media, mediana y cuartiles de las tres variables, además de desviación típica yt unos histogramas representativos de las muestras con las variables. En general, sacamos como conlusión que la media y la mediana del segundo examen es más alta que la del primero, a pesar de que la nota más alta es mayor en el primer examen que en el segundo. 
+
+Hacemos un gráfico que represente la dispersión de los datos por colores según la nota que sacaron los alumnos. 
+```{r}
+plot(alumnos$score1, alumnos$score2, col = as.factor(alumnos$label), xlab = "Examen 1", ylab = "Examen 2")
+```
+
+## Ejercicio 1: 
+
+
+El primer ejercicio nos pide hacer una matriz de confusión de los datos en "alumnos", para lo cual lo primero que hacemos es una división de la base de datos en "train" y "test" para hacer el entrenamiento y la predicción. Elegimos hacer el entrenamiento sobre el 80% de los datos, que en este caso serán 80 alumnos aleatorios. 
+```{r}
+set.seed(123)
+n = nrow(alumnos) 
+training <- sample(1:n, 0.80*n) 
+alumnos_train <- alumnos[training,] 
+alumnos_test <- alumnos[-training,]
+X.train <- alumnos_train$score1
+Y.train <- alumnos_train$score2
+X.test <- alumnos_test$score1
+Y.test <- alumnos_test$score2
+```
+
+
+------------------------
+Matriz de confusión:
+------------------------
+
+Para generar la matriz de confusión sobre el entrenamiento hacemos un modelo lineal sobre la muestra del train que prediga los valores de label segun lo explicativas que son las variables de los reusltados de ambos exámenes. 
+El resumen del modelo se ve a continuación:
+
+```{r}
+modelo1 <- glm(label~ score1+ score2, family="binomial", data = alumnos_train)
+summary(modelo1)
+```
+
+A continuación hacemos la predicción del modelo para sacar la matriz de confusión y ejecutamos la funcion confusionMatrix (librería caret) con el modelo predictivo y los datos del train. 
+
+````{r, echo = FALSE}
+prob.modelo1.insample <- predict(modelo1, type = "response")
+predicted.modelo1.insample <- prob.modelo1.insample > 0.9
+predicted.modelo1.insample <- as.numeric(predicted.modelo1.insample)
+```
+
+```{r}
+library(caret)
+confusionMatrix(data = as.factor(predicted.modelo1.insample), reference = as.factor(alumnos_train$label), dnn = c("Predicted", "Real cases"))
+```
+La matriz de confusión muestra que hay 8 casos de falso positivo (alumnos que estima que sí que acceden a la unibversidad pero en realidad no), y 1 de falso negativo (alumnos que predice que no entran frente a los que sí). Nos interesa que la cantidad de falsos positivos sea mínima. 
+
+
+
+Lo segundo que nos pide el ejercicio es, con la función TestGradientDescent hacer un test sobre los datos del entrenamiento. Ejecutamos lo aprendido en clase y obtenemos lo siguiente: 
+
+Nombramos variables X e Y, X siendo las variables explicativas e Y la predictiva (label)
+```{r}
+#Predictor variables
+X <- as.matrix(alumnos[, c(1,2)])
+
+#Add ones to X in the first column (matrix multiplication x b)
+X <- cbind(rep(1, nrow(X)), X)
+
+#Response variable
+Y <- as.matrix(alumnos$label)
+```
+
+La función sigmoide nos ayuda a interpretar los datos y tomar decisiones, estirando los datos tirando y tensando hacia arriba y hacia abajo, viendo cuales tienen probabilidad 1 y cuales probabilidad 0. 
+```{r}
+Sigmoid <- function(x) { 
+  1 / (1 + exp(-x))
+}
+
+# feed with data
+x <- seq(-10, 10, 0.1)
+
+# and plot
+plot(x, Sigmoid(x), col='blue', ylim = c(-.2, 1))
+abline(h = 0, v = 0, col = "gray60")
+```
+
+Creamos una funcion de coste que utilizaremos para averiguar qué parametros nos aportan el menor coste y que usaremos más adelante para el gráfico de coste mínimo según el número de iteraciones. 
+```{r}
+CostFunction <- function(parameters, X, Y) {
+  n <- nrow(X)
+  # function to apply (%*% Matrix multiplication)
+  g <- Sigmoid(X %*% parameters)
+  J <- (1/n) * sum((-Y * log(g)) - ((1 - Y) * log(1 - g)))
+  return(J)
+}
+
+```
+
+
+Introducimos el test gradient como se hizo en clase que minimice la función de coste. Obtendremos tres resultados: la evolución, el valor óptimo, y el resultado con un ejemplo de 400 iteraciones. 
+```{r}
+
+
+TestGradientDescent <- function(iterations, X, Y) {
+  parameters <- rep(0, ncol(X))
+  print(paste("Initial Cost Function value: ", 
+              convergence <- c(CostFunction(parameters, X, Y)), sep = ""))
+  parameters_optimization <- optim(par = parameters, fn = CostFunction, X = X, Y = Y, 
+                                   control = list(maxit = iterations))
+  parameters2 <- parameters_optimization$par
+  print(paste("Final Cost Function value: ", 
+              convergence <- c(CostFunction(parameters2, X, Y)), sep = ""))
+
+ return(parameters2) 
+}
+
+TestGradientDescent(400,X,Y)
+```
+
+
+```{r}
+library(testthat)
+test_that("Test TestGradientDescent",{
+  parameters <- TestGradientDescent(1200, X = X, Y = Y)
+  new_student <- c(1,25,78)
+  prob_new_student <- Sigmoid(t(new_student) %*% parameters)
+  print(prob_new_student)
+  expect_equal(as.numeric(round(prob_new_student, digits = 4)), 0.0135)
+})
+```
+
+
+
+
+
+## Ejercicio 2: 
+
+Creamos un bucle con el que se nos ejecute un mapa de puntos de las iteraciones y represente la influencia del numero de iteraciones en la función de costes y en el número óptimo de parametros. 
+```{r}
+
+minCost <- function(X, Y, iterations){ 
+  parameters <- rep(0, ncol(X)) 
+  vect <- NULL 
+  for(i in (1: iterations)) { 
+    opt_parameters <- optim(par = parameters, fn = CostFunction, X = X, Y = Y, control = list(maxit = i)) 
+    opt_parameters <- optim(par = parameters, fn = CostFunction, X = X, Y = Y, control = list(maxit = i)) 
+    vect[i] <- opt_parameters$value } 
+  return(vect) } 
+plot(minCost(X,Y,450))
+```
+Al pedir 1200 iteraciones, para los parametros óptimos que encuentra. Quiero el valor mínimo para la función de coste, cuanta smás iteraciones ponga, más probable es que encuentre el punto en el que el mejor coste. 
+
+## Ejercicio 3:
+
+El tercer ejercicio pide que busquemos los parámetros óptimos con alguno de los distintos modelos de la función optim. A continuación un resumen en inglés de los modelos que ofrece R para esa función optim. 
+
+The default method is an implementation of that of Nelder and Mead (1965), that uses only function values and is robust but relatively slow. It will work reasonably well for non-differentiable functions.
+
+Method "BFGS" is a quasi-Newton method (also known as a variable metric algorithm), specifically that published simultaneously in 1970 by Broyden, Fletcher, Goldfarb and Shanno. This uses function values and gradients to build up a picture of the surface to be optimized.
+
+Method "CG" is a conjugate gradients method based on that by Fletcher and Reeves (1964) (but with the option of Polak–Ribiere or Beale–Sorenson updates). Conjugate gradient methods will generally be more fragile than the BFGS method, but as they do not store a matrix they may be successful in much larger optimization problems.
+
+Method "L-BFGS-B" is that of Byrd et. al. (1995) which allows box constraints, that is each variable can be given a lower and/or upper bound. The initial value must satisfy the constraints. This uses a limited-memory modification of the BFGS quasi-Newton method. If non-trivial bounds are supplied, this method will be selected, with a warning.
+
+Nocedal and Wright (1999) is a comprehensive reference for the previous three methods.
+
+Method "SANN" is by default a variant of simulated annealing given in Belisle (1992). Simulated-annealing belongs to the class of stochastic global optimization methods. It uses only function values but is relatively slow. It will also work for non-differentiable functions. This implementation uses the Metropolis function for the acceptance probability. By default the next candidate point is generated from a Gaussian Markov kernel with scale proportional to the actual temperature. If a function to generate a new candidate point is given, method "SANN" can also be used to solve combinatorial optimization problems. Temperatures are decreased according to the logarithmic cooling schedule as given in Belisle (1992, p. 890); specifically, the temperature is set to temp / log(((t-1) %/% tmax)*tmax + exp(1)), where t is the current iteration step and temp and tmax are specifiable via control, see below. Note that the "SANN" method depends critically on the settings of the control parameters. It is not a general-purpose method but can be very useful in getting to a good value on a very rough surface.
+
+Method "Brent" is for one-dimensional problems only, using optimize(). It can be useful in cases where optim() is used inside other functions where only method can be specified, such as in mle from package stats4.
+
+Usamos el test gradient y aplicamos los modelos. 
+```{r}
+TestGradientDescent2 <- function(iterations, X, Y, method) {
+  parameters <- rep(0, ncol(X))
+  print(paste("Initial Cost Function value: ", 
+              convergence <- c(CostFunction(parameters, X, Y)), sep = ""))
+  optimization <- optim(par = parameters, fn = CostFunction, X = X, Y = Y, 
+                        control = list(maxit = iterations), method = method)
+  parameters2 <- optimization$par
+ return(parameters2) 
+}
+
+TestGradientDescent2(400, X, Y, "BFGS")
+```
+Obtenemos los parametros optimos en los que la función de coste nos da el menor coste posible
+
+```{r}
+TestGradientDescent2 <- function(iterations, X, Y, method) {
+  parameters <- rep(0, ncol(X))
+  print(paste("Initial Cost Function value: ", 
+              convergence <- c(CostFunction(parameters, X, Y)), sep = ""))
+  optimization <- optim(par = parameters, fn = CostFunction, X = X, Y = Y, 
+                        control = list(maxit = iterations), method = method)
+  parameters2 <- optimization$par
+ return(parameters2) 
+}
+
+TestGradientDescent2(400, X, Y, "CG")
+```

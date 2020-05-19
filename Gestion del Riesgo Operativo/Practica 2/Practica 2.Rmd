@@ -1,0 +1,414 @@
+---
+title: "Practica 2 Gestion de Riesgo"
+author: "Lucia Saiz Lapique"
+date: "30/3/2020"
+output: pdf_document
+---
+
+################  GESTION DE RIESGO OPERATIVO ###########
+
+################    Practica 2: Fraude   ###########
+
+################    Lucia Saiz Lapique     #############
+
+
+```{r, warning = FALSE, message = FALSE}
+library(readr)  # Package para leer los datos
+library(moments) #Package para calculo de momentos (asimetria, curtosis, ...)
+library(actuar) #Package para analisis actuarial
+library(fitdistrplus) #Package para ajuste de distribuciones
+library(ggplot2) #Package para visulacion
+library(purrr)  #Package para ciertas distribuciones
+```
+
+```{r, message = FALSE}
+datos <- read_csv("practica_propuesta1.csv")  # cargamos los datos
+names(datos)[1] = paste("Fraudes")  
+```
+
+Nombramos la columna de la base de datos de nuevo Fraudes porque no tengo claro que son los datos
+
+
+# INTRODUCCIÓN
+
+## Analisis de los datos
+
+```{r}
+head(datos$Fraudes, 10) #vemos los 10 primeros elementos
+summary(datos$Fraudes)  # resumen de los datos
+table(datos$Fraudes) #tabla de frecuencias
+```
+
+```{r}
+skewness(datos$Fraudes)  
+kurtosis(datos$Fraudes)  
+```
+Con los datos anteriores indicamos el coeficiente de asimetría, que no puestra que esxiste asimetría negativa (o a la izquierda), y el coeficiente de curtosis, que indica que la curva es Platicurtica.
+
+Que sea mas apuntada significa que en la media hay mas probabilidad, pero en las colas hay 
+menos probabilidad que la normal. En las platicurticas (como es este caso), hay menos pesos en las colas. 
+
+## Características: Medidas de posición y dispersión
+
+```{r}
+mean(datos$Fraudes) # como vemos, la media de los datos de la columna en cuestion es 114,09
+var(datos$Fraudes)  # la varianza es 210,36
+median(datos$Fraudes)  # la mediana son 115 
+```
+
+## Cuantiles
+
+```{r}
+quantile(datos$Fraudes, 0.1)
+quantile(datos$Fraudes,seq(0,1, 0.20))
+quantile(datos$Fraudes,seq(0.9, 1, 0.01))  
+```
+Vemos que no hay mucha varianza entre los datos que se encuentran en la cola
+
+## Histograma de los datos
+
+```{r}
+hist(datos$Fraudes, pch = 20, breaks = 25, prob = TRUE, main = "Distribución de la Frecuencia de los Fraudes",
+     xlab = "Número de fraudes", ylab = "Frecuencia") 
+```
+
+El histograma me permite ver la distribucion por encima de los datos en cuanto a la frecuencia de cada numero de fraude que se genera.
+
+Con ello, podemos hacernos una ligera idea de la posible distribucion que siguen y que estudio podemos aplicar.
+
+Con esta informacion debemos intentar ajustar una distribucion de probabilidad. A continuacion revisaremos los posibles modelos para ver cual se ajusta mas a los datos
+
+
+
+
+# METODOS
+
+No podemos utilizar el metodo de maxima bondad del ajuste porque no es applicable a distribuciones discretas. En el caso de nuestros datos, como son discretos, aplicaremos solo los siguientes tres metodos:
+
+- Estimacion por maxima verosimilitud
+- Estimación de coincidencia de cuantiles
+- Estimación por momentos
+
+Ademas, decidimos aplicarle esos cuatro metodos a cuatros distribuciones distintas: la distribucion de Poisson, la Binomial Negativa, la Uniforme Discreta y la Geometrica, para poder analizar cual se ajusta mejor a nuestra secuencia de datos.
+
+
+## Estimación por máxima verosimilitud
+
+### Binomial Negativa
+
+```{r, warning = FALSE}
+fnbinomMLE <- fitdist(datos$Fraudes, "nbinom", method = "mle", discrete = TRUE)
+fnbinomMLE$estimate
+```
+
+### Uniforme discreta
+
+```{r, warning = FALSE}
+funifMLE <- fitdist(datos$Fraudes, "unif", method = "mle", discrete = TRUE)
+funifMLE$estimate
+```
+
+### Poisson
+```{r, warning = FALSE}
+fpoisMLE <- fitdist(datos$Fraudes, "pois", method = "mle", discrete = TRUE)
+fpoisMLE$estimate
+```
+
+### Geométrica
+```{r, warning = FALSE}
+fgeomMLE <- fitdist(datos$Fraudes, "geom", method = "mle", discrete = TRUE)
+fgeomMLE$estimate
+```
+```{r}
+x = datos
+```
+
+### Plot: 
+Generamos la curva de cada distribucion con este metodo en el histograma inicial para analizar cual se ajusta mejor a los datos
+
+```{r, warning = FALSE}
+hist(datos$Fraudes, pch = 10, breaks = 30, prob = TRUE, main = "Distribuciones 
+     con el Método MLE", freq = FALSE, xlab = "Número de Fraudes", ylab = "Densidad")
+curve(dnbinom(x, size = fnbinomMLE$estimate[1], mu = fnbinomMLE$estimate[2], 
+              log = FALSE), col = "turquoise", lwd = 2, add = T)
+curve(dunif(x, funifMLE$estimate[1], funifMLE$estimate[2], log = FALSE), 
+      col = "purple", lwd = 2, add = T)
+curve(dpois(x, fpoisMLE$estimate, log = FALSE), col = "red", lwd = 2, add = T)
+curve(dgeom(x, as.numeric(fgeomMLE$estimate), log = FALSE), col = "green", 
+      lwd = 2, add = T)
+
+```
+Los resultados no son muy concluyentes pero vemos como los picos que se generan con el estudio de todos ellos coinciden levemente con las subidas de los datos y se forma la mayor probabilidad por el centro. La Uniforme Discreta no nos aporta mucha información relevante. 
+
+
+## Estimación de coincidencia de cuantiles
+
+### Binomial Negativa
+```{r, warning = FALSE, message = FALSE}
+fnbinomQME <- fitdist(datos$Fraudes, "nbinom", method = "qme", probs = c(1/3, 2/3))
+fnbinomQME$estimate
+```
+
+
+### Uniforme discreta
+```{r, warning = FALSE}
+funifQME <- fitdist(datos$Fraudes, "unif", method = "qme", probs = c(1/3, 2/3), discrete = TRUE)
+funifQME$estimate
+```
+
+### Poisson
+```{r, warning = FALSE}
+fpoisQME <- fitdist(datos$Fraudes, "pois", method = "qme", probs = 1/3, discrete = TRUE)
+fpoisQME$estimate  
+```
+Como las probabilidades son complemetarias, cogiendo un tercio o dos tercios como la probabilidad en cuestion da igual
+
+### Geométrica 
+```{r, warning = FALSE}
+fgeomQME <- fitdist(datos$Fraudes, "geom", method = "qme", probs = 1/3, discrete = TRUE)
+fgeomQME$estimate
+```
+
+
+### Plot: 
+Generamos la curva de cada distribucion con este metodo en el histograma inicial para analizar cual se ajusta mejor a los datos
+
+```{r, warning = FALSE}
+hist(datos$Fraudes, pch = 10, breaks = 30, prob = TRUE, main = "Distribuciones con el Método QME", freq = FALSE,
+     xlab = "Número de Fraudes", ylab = "Densidad")
+curve(dnbinom(x, size = fnbinomQME$estimate[1], mu = fnbinomQME$estimate[2]), col = "turquoise", lwd=2,
+      add = T)
+curve(dunif(x, funifQME$estimate[1], funifQME$estimate[2], log = FALSE), 
+      col = "purple", lwd = 2, add = T)
+curve(dpois(x, fpoisQME$estimate[1], log = FALSE), col = "red", lwd = 2, add = T)
+curve(dgeom(x, fgeomQME$estimate[1], log = FALSE), col = "green", lwd = 2, add = T)
+```
+Como en el método anterior, los resultados no son muy concluyentes pero vemos como los picos que se generan con el estudio de todos ellos coinciden levemente con las subidas de los datos y se forma la mayor probabilidad por el centro. La Uniforme Discreta nos aporta un poco más de información que en el caos anterior, pero sigue sin ser muy relevante.
+
+## Estimación por momentos
+
+```{r}
+memp  <-  function(datos, order) mean(datos^order) 
+```
+Definimos nº de momentos que neceitamos
+
+### Binomial Negativa
+```{r, warning = FALSE}
+fnbinomMME <- fitdist(datos$Fraudes, "nbinom", order = c(1, 2), memp = memp, 
+                      method = "mme")
+fnbinomMME$estimate
+```
+
+### Uniforme Discreta
+```{r, warning = FALSE}
+funifMME <- fitdist(datos$Fraudes, "unif", order = c(1, 2), memp = memp, 
+                    method = "mme", discrete = TRUE)
+funifMME$estimate
+```
+
+### Poisson
+```{r, warning = FALSE}
+fpoisMME <- fitdist(datos$Fraudes, "pois", order = c(1, 2), memp = memp, 
+                    method = "mme")
+fpoisMME$estimate
+```
+
+### Geometrica
+```{r, warning = FALSE}
+fgeomMME <- fitdist(datos$Fraudes, "geom", order = c(1, 2), memp = memp, 
+                    method = "mme")
+fgeomMME$estimate
+```
+
+### Plots: 
+Generamos la curva de cada distribucion con este metodo en el histograma inicial para analizar cual se ajusta mejor a los datos
+```{r, warning = FALSE}
+hist(datos$Fraudes, pch = 10, breaks = 30, prob = TRUE, main = "Distribuciones con 
+     el Método MME", freq = FALSE, xlab = "Número de Fraudes", ylab = "Densidad")
+curve(dnbinom(x, size = fnbinomMME$estimate[1], mu = fnbinomMME$estimate[2]), col = "turquoise", lwd = 2, add = T) 
+curve(dunif(x, funifMME$estimate[1], funifMME$estimate[2]), col = "purple", lwd = 2, 
+      add = T) 
+curve(dpois(x, fpoisMME$estimate[1]), col = "red", lwd = 2, add = T) 
+curve(dgeom(x, fgeomMME$estimate[1]), col = "green", lwd = 2, add = T)
+```
+Los resultados no son muy concluyentes, al igual que en los dos métodos anteriores, de hecho vemos como son muy similares los tres: vemos como los picos que se generan con el estudio de todos ellos coinciden levemente con las subidas de los datos y se forma la mayor probabilidad por el centro. La Uniforme Discreta sigue sin aportar información relevante.
+
+# Conclusion: Comparacion de metodos:
+
+## Binomial Negativa
+```{r, warning = FALSE}
+hist(datos$Fraudes, pch = 10, breaks = 30, prob = TRUE, main = "Métodos de Binomial Negativa", freq = FALSE, xlab = "Número deFraudes", ylab = "Densidad")
+curve(dnbinom(x, size = fnbinomMME$estimate[1], mu = fnbinomMME$estimate[2]), col = "turquoise", lwd = 2, add = T) 
+curve(dnbinom(x, size = fnbinomMLE$estimate[1], mu = fnbinomMLE$estimate[2]), col = 
+        "pink", lwd = 2, add = T)
+curve(dnbinom(x, size = fnbinomQME$estimate[1], mu = fnbinomQME$estimate[2]), col = "purple", lwd = 2, add = T)
+```
+En el caso de la distribución Binomial Negativa, a primera vista, vemos como los métodos se superponen; no hay gran diferencia entre los metodos. Se percibe una muy pequeña diferenca en los dos primeros picos por parte del método de coincidencia de cuantiles frente a los otros dos, pero no podemos sacar conclusiones definitivas. 
+
+### Visualizacion de las distribuciones (qqplot)
+```{r}
+plot(fnbinomMLE)
+plot(fnbinomQME)
+plot(fnbinomMME)
+```
+Siguiendo lo percibido en el gráfico anterior, con estos gráficos, vemos como la mayor diferencia se encuentra en el método de coincidencia de cuantiles. 
+
+
+```{r, warning = FALSE}
+ppcomp(list(fnbinomMLE, fnbinomQME, fnbinomMME), xlogscale = TRUE, ylogscale = 
+         TRUE, ylab = "probabilidades empíricas", xlab = "probabilidades 
+       teóricas", color = fnbinomMLE, main = "PP-plot Distribución Binomial 
+       Negativa", legendtext = c("Máxima verosimilitud", "Coincidencia de cuantiles",
+                                 "Por momentos"), plotstyle = "ggplot", fitpch = 1:4)
+
+qqcomp(list(fnbinomMLE, fnbinomQME, fnbinomMME), xlogscale=TRUE, ylogscale=
+         TRUE, ylab="cuantiles empíricos", xlab="cuantiles teóricos", main = 
+         "QQ-plot Distribución Binomial Negativa", addlegend = TRUE, legendtext=
+         c("Máxima verosimilitud", "Coincidencia de cuantiles", "Por momentos"), 
+       fitpch=1:4)
+```
+En los gráficos anteriores, vemos la relacion en QQplot y PPplot de forma más clara que en los anteriores. Aquí vemos claramente como el método de coincidencia de cuantiles no sigue una linea tan precisa como la que crean los otros dos métodos, sobretodo en las probabilidades más bajas. 
+
+## Uniforme Discreta
+```{r, warning = FALSE}
+hist(datos$Fraudes, pch = 10, breaks = 30, prob = TRUE, main = "Métodos 
+     Distribución Uniforme Discreta", freq = FALSE,
+     xlab = "Número de Fraudes", ylab = "Densidad")
+curve(dunif(x, funifMME$estimate[1], funifMME$estimate[2]), col = "turquoise", 
+      lwd = 2, add = T) 
+curve(dunif(x, funifMLE$estimate[1], funifMLE$estimate[2]), col = "pink", 
+      lwd = 2, add = T)
+curve(dunif(x, funifQME$estimate[1], funifQME$estimate[2]), col = "purple", 
+      lwd = 2, add = T)
+```
+Vemos que según el método que se le aplique, las curvas son distintas. De todas dormas, esta distribución devuelve poca información relevante en cualquiera de los tres métodos. 
+
+### Visualizacion de las distribuciones (qqplot)
+```{r}
+plot(funifMLE)
+plot(funifQME)
+plot(funifMME)
+```
+Como veíamos en el gráfico anterior, los tres métodos aportan distintos resultados para esta distribución.
+
+
+```{r, warning = FALSE}
+qqcomp(list(funifMLE, funifQME, funifMME), xlogscale=TRUE, ylogscale=TRUE, 
+       ylab="cuantiles empíricos", xlab="cuantiles teóricos", main="QQ-plot 
+       Distribución Uniforme Discreta", addlegend = TRUE,
+       legendtext=c("Máxima verosimilitud", "Coincidencia de cuantiles", 
+                    "Por momentos"), fitpch=1:4)
+```
+En este caso no ejeuctamos el plot de tipo PP porque en el caso de la distribución uniforme se generaban errores. 
+
+## Poisson
+```{r, warning = FALSE}
+hist(datos$Fraudes, pch = 10, breaks = 30, prob = TRUE, main = "Métodos 
+     Distribución de Poisson", freq = FALSE,
+     xlab = "Número de Fraudes", ylab = "Densidad")
+curve(dpois(x, fpoisMME$estimate), col = "turquoise", lwd = 2, add = T) 
+curve(dpois(x, fpoisMLE$estimate), col = "pink", lwd = 2, add = T)
+curve(dpois(x, fpoisQME$estimate), col = "purple", lwd = 2, add = T)
+```
+Al igual que en la Binomial Negativa, en la Poisson vemos como las lineas se superponen, por lo que asumimos que no hay diferencia entre los métodos empleados para la distribución de Poisson (a primera vista). En este caso no existe diferencia entre ningún metodo. 
+
+### Visualizacion de las distribuciones (qqplot)
+```{r, warning = FALSE}
+plot(fpoisMLE)
+plot(fpoisQME)
+plot(fpoisMME)
+```
+```{r, warning = FALSE}
+ppcomp(list(fpoisMLE, fpoisQME, fpoisMME), xlogscale = TRUE, ylogscale = TRUE, 
+       ylab = "probabilidades empíricas", xlab = "probabilidades teóricas", 
+       color = fnbinomMLE,
+       main = "PP-plot Distribución de Poisson", legendtext = c("Máxima verosimilitud", "Coincidencia de cuantiles", "Por momentos"),
+       plotstyle = "ggplot", fitpch = 1:4)
+
+qqcomp(list(fpoisMLE, fpoisQME, fpoisMME), xlogscale=TRUE, ylogscale=TRUE, 
+       ylab="cuantiles empíricos", xlab="cuantiles teóricos", main="QQ-plot 
+       Distribución de Poisson", addlegend = TRUE, legendtext=c("Máxima 
+                                                                verosimilitud", "Coincidencia de cuantiles", "Por momentos"), fitpch=1:4)
+```
+En el caso de la distribución de Poisson, al ejecutar el PP-Plot vemos como los datos se superponen y siguen todos la misma curva.El gráfico de QQ-Plot es más explicativo. De todas formas, tal y como percibimos en el histograma y las curvas iniciales, en el caso de la distribución de Poisson, podemos concluir que no hay diferencias entre ajustar los datos con un método u otro. 
+
+
+## Geometrica
+```{r, warning = FALSE}
+hist(datos$Fraudes, pch = 10, breaks = 30, prob = TRUE, main = "Métodos 
+     Distribución Geométrica", freq = FALSE, xlab = "Número de Fraudes", 
+     ylab = "Densidad")
+curve(dgeom(x, fgeomMME$estimate), col = "turquoise", lwd = 2, add = T) 
+curve(dgeom(x, fgeomMLE$estimate), col = "pink", lwd = 2, add = T)
+curve(dgeom(x, fgeomQME$estimate), col = "purple", lwd = 2, add = T)
+```
+En este caso, los datos no se superponen tanto como en las anteriores ya que vemos también la línea de color morado (que indica el metodo de coincidencia de cuantiles); se podría decir que existe cierta diferencia entre los metodos. De todas formas, no es grande.
+
+### Visualizacion de las distribuciones (qqplot)
+```{r}
+plot(fgeomMLE)
+plot(fgeomQME)
+plot(fgeomMME)
+```
+
+```{r}
+ppcomp(list(fgeomMLE, fgeomQME, fgeomMME), xlogscale = TRUE, ylogscale = TRUE, 
+       ylab = "probabilidades empíricas", xlab = "probabilidades teóricas", 
+       main = "PP-plot Distribución Geométrica", legendtext = c("Máxima 
+                                                                verosimilitud", "Coincidencia de cuantiles", "Por momentos"), plotstyle = "ggplot", fitpch = 1:4)
+
+qqcomp(list(fpoisMLE, fpoisQME, fpoisMME), xlogscale=TRUE, ylogscale=TRUE, 
+       ylab="cuantiles empíricos", xlab="cuantiles teóricos", main="QQ-plot 
+       Distribución Geométrica", addlegend = TRUE, legendtext=c("Máxima 
+                                                                verosimilitud", "Coincidencia de cuantiles", "Por momentos"), fitpch=1:4)
+```
+Como vemos en el PP plot, para esta distribución, efectivamente,sí que existe cierta diferencia entre el método de coincidencia de cuantiles y los otros dos. Aunque con el QQ-Plot nos aseguramos de que la diferencia no es muy grande entre los cuantiles, vemos cómo la diferencia en probabilidades sí que es grande. Esto se comprobará más adelante con el test de bondad del ajuste.  
+
+
+# Conclusiones con Test de Bondad del Ajuste
+
+A continuación, aplicamos un test de la bondad del ajuste a qcada método para ver qué distribuciónse ajusta mejor en cada una. Se obtienen así los valores del estadistico Chi-cuadrado ademas de los grados de libertad de cada distribución.
+
+## Método de Máxima Verosimilitud
+
+```{r}
+gofstat(list(fnbinomMLE, funifMLE, fpoisMLE, fgeomMLE), chisqbreaks = c(0:4, 9), 
+        discrete = TRUE, fitnames = c("Binomial Negativa", "Uniforme Discreta", 
+                                      "Poisson", "Geometrica"))
+```
+Como comentarios principales en de este método, cabe mencionar que todos los p-valores que se identifican (en el caso de la uniforme discreta se generan NAs), todos son mayores que 0.05. Esto significa que se acepta la hipótesis nula y que, por tanto, los datos pertenecen a las tres distribuciones que se han planteado. 
+
+Como las tres sen aceptadas por el p-valor, tenemos en cuenta los valores del criterio de Akaike y el Bayesiano, donde se debe seleccionar la distribución con los valores más bajos; en este caso la distribución que más se ajusta a los datos es la Binomial Negativa.
+
+## Método de Coincidencia de Cuantiles
+
+```{r}
+gofstat(list(fnbinomQME, funifQME, fpoisQME, fgeomQME), chisqbreaks = c(0:4, 9), 
+        discrete = TRUE, fitnames = c("Binomial Negativa", "Uniforme Discreta", 
+                                      "Poisson", "Geometrica"))
+```
+Como comentarios principales en de este método, cabe mencionar que todos los p-valores que se identifican (en el caso de la uniforme discreta se generan NAs), todos son mayores que 0.05 (mayores incluso que con el método anterior, lo cual implica mayor precisión en el ajuste, que coincide con las diferencias que vimos en la svisualizaciones anteriores en el caso de la distribución geométrica y la binomial). Esto significa que se acepta la hipótesis nula y que, por tanto, los datos pertenecen a las tres distribuciones que se han planteado. 
+
+Como las tres sen aceptadas por el p-valor, tenemos en cuenta los valores del criterio de Akaike y el Bayesiano, donde se debe seleccionar la distribución con los valores más bajos; en este caso la distribución que más se ajusta a los datos es, de nuevo, la Binomial Negativa.
+
+## Método por Momentos
+
+```{r}
+gofstat(list(fnbinomMME, funifMME, fpoisMME, fgeomMME), chisqbreaks = c(0:4, 9), 
+        discrete = TRUE, fitnames = c("Binomial Negativa", "Uniforme Discreta", 
+                                      "Poisson", "Geometrica"))
+```
+Como comentarios principales en de este método, cabe mencionar que todos los p-valores que se identifican (en el caso de la uniforme discreta se generan NAs), todos son mayores que 0.05. Esto significa que se acepta la hipótesis nula y que, por tanto, los datos pertenecen a las tres distribuciones que se han planteado. 
+
+Como las tres sen aceptadas por el p-valor, tenemos en cuenta los valores del criterio de Akaike y el Bayesiano, donde se debe seleccionar la distribución con los valores más bajos; en este caso la distribución que más se ajusta a los datos es, otra vez, la Binomial Negativa.
+
+## Conclusión final:
+
+De los datos que obtenemos en el test anterior, chi-squared p-value indica el nivel de significacion de cada distribución. La hipotesis planteada es que la muestra en cuestion se encuentra en distribucion planteada, entonces si el nivel de significacion  (p-valor) es mayor que 0.05, se acepta la hipotesis nula y por tanto forma parte de la distribucion que se ha planteado. 
+
+En todos los casos, los valores del p-valor son muy altos (todos mayores que 0.05 menos en el caso de la Uniforme Discreta, que genera NAs). Esto, en un principio puede sugerir que los datos pueden estar definidas por cualquiera de estas tres distribuciones. 
+
+La tabla con los valores empiricos y los teoricos para las tres distribciones restantes nos muestra que los valores mas bajos pertenecen a la distribucion binomial negativa, con lo cual reducimos los posibles tipos de distribucion a esas dos (la siguiente mas baja es la de Poisson). 
+
+Finalmente, se eligirá aquel modelo con el menor valor de AKAIKE y de Bayesian C, que, en los tres métodos aplicados muestra ser la Binomial Negativa.
+

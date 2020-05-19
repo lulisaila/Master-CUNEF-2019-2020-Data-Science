@@ -1,0 +1,170 @@
+---
+title: "Agrupacion Parte 2"
+author: "Lucia Saiz Lapique"
+date: "16/1/2020"
+output: pdf_document
+---
+
+### AGRUPACIÓN
+
+¿Que clientes nos traen más rentabilidad y qué porcentaje de cancelación tienen?
+Las cancelaciones que nos hagan los clientes que aporten mayor rentabilidad genera más pérdidas que un cliente que haga una cancelación de low-cost. Lo que queremos es utilizar este analisis para evitar que clientes de rentabilidad alta para el hotel cancelen. 
+
+```{r}
+# cargamos las librerias necesarias
+library(readr)
+library(skimr)
+library(dplyr)
+library(tidyverse)
+library(corrplot) # correlaciones
+library(PerformanceAnalytics) # clusters
+library(Rtsne) # cluster grafico
+library(colorspace) # cluster
+library(dendextend) # dendograma que al final no hemos hecho
+```
+
+```{r}
+datos <- read_csv("Datos_Finales.csv") # cargamos la base de datos final
+agrup_datos <- select(datos, -c(IsCanceled, DiferenciasReserva)) # borramos las variables especificas de prediccion
+```
+
+Factorizamos todos los datos para calcular las distancias
+```{r}
+agrup_datos$Meal <- as.factor(agrup_datos$Meal)
+agrup_datos$Country <- as.factor(agrup_datos$Country)
+agrup_datos$MarketSegment <- as.factor(agrup_datos$MarketSegment)
+agrup_datos$DepositType <- as.factor(agrup_datos$DepositType)
+agrup_datos$CustomerType <- as.factor(agrup_datos$CustomerType)
+agrup_datos$RequiredCarParkingSpaces <- as.factor(agrup_datos$RequiredCarParkingSpaces)
+agrup_datos$TotalOfSpecialRequests <- as.factor(agrup_datos$TotalOfSpecialRequests)
+agrup_datos$ReservationStatus <- as.factor(agrup_datos$ReservationStatus)
+agrup_datos$MotivoViaje <- as.factor(agrup_datos$MotivoViaje)
+agrup_datos$Repetir <- as.factor(agrup_datos$Repetir)
+agrup_datos$Findes <- as.factor(agrup_datos$Findes)
+agrup_datos$ArrivalDate <- as.factor(agrup_datos$ArrivalDate)
+```
+
+El año 2016 es el más representativo, ya que para el resto de los años no tenemos datos de todos los meses.
+```{r}
+# vemos con cuantos datos contamos de cada año para elegir la muestra
+sum(H1$ArrivalDateYear == 2015)
+sum(H1$ArrivalDateYear == 2016)
+sum(H1$ArrivalDateYear == 2017)
+```
+
+Creamos una variable year para reducir la muestra a las observaciones del año 2016 
+```{r}
+agrup_datos$year <- str_sub(agrup_datos$ArrivalDate, 1, 4)
+agrup_datos$year <- as.factor(agrup_datos$year)
+```
+
+```{r}
+muestra <- filter(agrup_datos, year == 2016)
+```
+
+Separamos numericas y categoricas para escalar las numericas
+```{r}
+numericas <- scale(muestra[, !sapply(muestra, is.factor)])
+categoricas <- muestra[, sapply(muestra, is.factor)]
+```
+
+Volvemos a unir la base de datos una vez tipificadas las variables numéricas
+```{r}
+muestra <- cbind(numericas, categoricas)
+```
+
+Distancias Gower: 
+Lanzamos el modelo para calcular las distancias de gower, que nos interesan porque tienen en cuenta las distancias entre variables numéricasy también las categóricas
+```{r}
+library(cluster)
+gower_dist <- daisy(muestra, 
+                    metric = "gower")
+ 
+```
+
+Creamos la matriz de distancias
+```{r}
+gower_mat <- as.matrix(gower_dist)
+```
+
+```{r}
+sil_width <- c(NA)
+
+for(i in 2:15){
+  pam_fit <- pam(gower_dist,  # calculamos el pam explicado en el informe
+                 diss = TRUE,
+                 k = i)  # la i la introducimos nosotros
+  sil_width[i] <- pam_fit$silinfo$avg.width
+}
+```
+
+Con el grafico a continuación, obtenemos el numero optimo de clusters
+```{r}
+plot(1:15, sil_width,  
+     xlab = "Number of clusters", xaxt = 'n',
+     ylab = "Silhouette Width")
+axis(1, at = seq(1, 15, by = 1), las = 2)
+lines(1:15, sil_width)
+```
+
+```{r}
+pam_fit <- pam(gower_dist, diss = TRUE, k = 9) # lanzamos pam con el numero de clusters optimo (9)
+pam_results <- muestra %>% # sobre la muestra
+  mutate(cluster = pam_fit$clustering) %>% # con el fit
+  group_by(cluster) %>%   # para que nos agrupe segun el cluster q salga
+  do(the_summary = summary(.))
+pam_results$the_summary  # resultados de caracteristicas por clusters
+```
+
+```{r}
+tsne_obj <- Rtsne::Rtsne(gower_dist, is_distance = TRUE)  # para hacer el grafico
+
+tsne_data <- tsne_obj$Y %>%
+  data.frame() %>%
+  setNames(c("X", "Y")) %>%
+  mutate(cluster = factor(pam_fit$clustering)) 
+
+ggplot(aes(x = X, y = Y), data = tsne_data) +  # cluster finales, visualmente
+  geom_point(aes(color = cluster)) # cada color de los puntos es un cluster distinto
+```
+
+No eclust porque solo deja con numericas y no se obtiene una representacion real de nuestros grupos
+
+CARACTERISTICAS CLUSTERS
+```{r}
+muestra$grupo <- pam_fit$cluster  # nueva variable para calcular las caracteristicas
+```
+
+```{r}
+Mode <- function(x) {  # formula para calcular la moda, ya que no existe funcion para ello
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]  
+}
+```
+
+
+```{r}
+modas <- muestra %>%  # con la base de datos de muestra
+  group_by(grupo) %>% # agrupando por los clusters desde la nueva funcion
+   dplyr::summarize(IsRepeatedGuest = Mode(IsRepeatedGuest),
+                   ADR = round(mean(ADR),2), # media del ADR
+                   TotalDias = Mode(TotalDias), # moda del numero de noches
+                   TotalPersonas = Mode(TotalPersonas), # moda del numero total de personas por reserva
+                   Anticipacion_reserva = round(mean(Anticipacion_reserva),2), # media de la anticipacion
+                   Meal = Mode(Meal), # moda de todas las variables categoricas
+                   ReservationStatus = Mode(ReservationStatus),
+                   Country = Mode(Country),
+                   MarketSegment = Mode(MarketSegment),
+                   DepositType = Mode(DepositType),
+                   CustomerType = Mode(CustomerType),
+                   RequiredCarParkingSpaces = Mode(RequiredCarParkingSpaces),
+                   MotivoViaje = Mode(MotivoViaje),
+                   Repetir = Mode(Repetir),
+                   Country = Mode(Country),
+                   Findes = Mode(Findes)
+                   
+  )
+modas
+```
+
+

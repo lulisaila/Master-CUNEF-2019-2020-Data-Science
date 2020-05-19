@@ -1,0 +1,306 @@
+---
+title: "NBA 2"
+author: "Lucia Saiz Lapique"
+date: "15/10/2019"
+output: pdf_document
+---
+
+
+A continuación, realizaremos una regresión regularizada para encontrar el mejor modelo posible que calcule el sueldo de cada jugador de los equipos de la NBA. Contamos con una base de datos en la que se incluyen 28 variables, que son tanto cuantitativas como cualitativas. 
+
+Entre las variables cualitativas encontramos datos como el nombre de los jugadores, sus paises de origen y el equipo del que forman parte. La mayor parte de las variables son de tipo numérico, en donde se incluyen datos más conocidos como salario, edad o raking y también cosas mucho más precisas como número de rebotes en la ofensa, o cantidad de apoyo que le dan los jugadores a sus compañeros.
+
+Es una base de datos muy amplia, con 485 muestras, en las cuales existen muy pocos datos desconocidos (NA) que eliminaremos para estudiar el modelo preferible sin cometer errores. 
+
+La cuestión a estudiar es cómo podemos estimar el sueldo de estos jugadores basándonos en las características que nos aporta la base de datos. Para ello, antes de ir directamente a la predicción del error medio, creamos un modelo que incluya a todas las variables, para, de ahí, empezar a descartar las no relevantes. Después, llevaremos a cabo el método de selección "forward", para averiguar cuáles serían las variables más relevantes para nuestro modelo. Realizaremos un método de validación para entender con cuánto margen de error contamos e intentar reducirlo más adelante. Finalmente, con los métodos de regulación (ridge o lasso) averiguaremos el error medio definitivo de nuestro modelo. 
+
+A continuación, nos bajamos la base de datos que queremos utilizar con read.csv y la metemos en un nuevo objeto para facilitar su uso, eliminamos las variables que contengan algun NA con la función na.omit y llamamos a todas las librerías que vamos a utilizar durante el trabajo. De esta forma, alteramos un poco la base de datos y acabamos con una situación inicial de 483 variables, donde los datos estarán todos "limpios". 
+```{r}
+
+library(dplyr)
+library(leaps)
+library(MASS)
+library(car)
+library(ISLR)
+library(gvlma)
+library(ggplot2)
+library(rsample)  # data splitting 
+library(glmnet)   # implementing regularized regression approaches
+library(tidyverse)
+library(readr)
+nba <- read_csv("nba.csv")
+nba <- na.omit(nba)
+```
+ 
+Le cambiamos también el nombre a nuestras variables para que resulte más sencillo su uso a lo largo del cálculo del modelo. 
+```{r}
+names(nba)[3] <- "Country"
+names(nba)[4] <- "Ranking"
+names(nba)[6] <- "Equipo"
+names(nba)[7] <- "Partidos"
+names(nba)[8] <- "Minutos"
+names(nba)[9] <- "Eficiencia"
+names(nba)[10] <- "Aciertos"
+names(nba)[11] <- "Triple_Intento"
+names(nba)[12] <- "Intento_Libre"
+names(nba)[13] <- "Rebote_Ofensa"
+names(nba)[14] <- "Rebote_Defensa"
+names(nba)[15] <- "Rebotes_Total"
+names(nba)[16] <- "Asistencia"
+names(nba)[17] <- "Robo"
+names(nba)[18] <- "Bloqueos"
+names(nba)[19] <- "PerdidaBalon"
+names(nba)[20] <- "Jugar_Equipo"
+names(nba)[21] <- "Ataque_Acertado"
+names(nba)[22] <- "Defensa_Acertada"
+names(nba)[23] <- "AciertosTotal"
+names(nba)[24] <- "Aciertos48"
+```
+
+----------------
+PRIMER PASO:
+----------------
+
+Creamos un modelo inicial con todas las variables excepto las cualitativas, ya que, a pesar de que "Equipo", por ejemplo, pueda ser relevante en el sueldo que tenga un jugador, el programa no es capaz de interpretarlas como números y agruparlas o usarlas para hacer cálculos:
+```{r}
+Modelo0 <- lm(Salary ~. - (Player + Country + Equipo), data = nba)
+summary(Modelo0)
+```
+De aquí sacamos como conclusión que las variables de mayor relevancia son Ranking, Age, Partidos y Minutos. Seguimos el estudio para confirmar o especificar esto.
+
+----------------
+SEGUNDO PASO:
+----------------
+
+FORWARD MODEL: Con la función regsubsets realizamos el método de reducción de datos llamado "forward" ya que, al comparar en la práctica anterior todos los modelos, era el que nos daba el mejor resultado. Realizamos la regresión con todas las variables (excepto las cualitativas) y el resultado es el siguiente:
+```{r}
+Metodo_Forward <- regsubsets(Salary~.-(Player + Equipo + Country), nba, nvmax = 25, method = "forward")
+summary(Metodo_Forward) 
+```
+
+Está información es muy poco visual y difícil de interpretar, con lo que hacemos una estimación indirecta de este modelo con R cuadrado ajustado y BIC, de los cuales hay que saber que, los datos que nos interesan son el valor máximo de R cuadrado ajustado y el mínimo de BIC. Por tanto, los calculamos directamente:
+
+```{r}
+summary(Metodo_Forward)$adjr2
+which.max(summary(Metodo_Forward)$adjr2)
+```
+
+```{r}
+summary(Metodo_Forward)$bic
+which.min(summary(Metodo_Forward)$bic)
+```
+Obtenemos como resultado que el valor en posicion 8 tiene el mayor R cuadrado ajustado y en la 6 está el de menor BIC. Nos interesan los valores más pequeños y el menor número posible de variables porque la intención es reducir al máximo el error, con lo cual decidimos utilizar el 6 que nos a calculado el BIC.
+
+Averiguamos cuáles son esas 6 variables que el método forward y BIC han establecido como las más importantes y son las siguientes:
+
+```{r}
+coef(object = Metodo_Forward, id = 6)
+```
+
+----------------
+TERCER PASO:
+----------------
+
+CROSS VALIDATION: Elegimos el "Simple Validation Set" pues es, como indica el nombre, el más fácil de aplicar. Creamos una semilla para producir una serie de números aleatorios que comiencen todos en el mismo origen, que hemos decidido que sea 1. Para la validación, que es un método que sirve para averiguar si nuestro modelo es válido, utilizamos  las variables que nuestro modelo forward ha dado como importantes. Este método coge las muestras y las divide en dos grupos, aplicándole un "trainig" al grupo de datos más grande (en este caso 2/3 del grupo) y un "testing" al grupo más pequeño.
+
+```{r}
+set.seed(1)
+train <- sample(x = 1:483, size = 322, replace = FALSE)
+Modelo1 <- regsubsets(Salary~ (Ranking + Age + Partidos + Minutos + Jugar_Equipo + AciertosTotal), data = nba[train,], nvmax = 6, method = "forward")
+validation_error <- rep(NA, 6)
+test_matrix <- model.matrix(Salary ~ (Ranking + Age + Partidos + Minutos + Jugar_Equipo + AciertosTotal), data = nba[-train, ])
+```
+
+```{r}
+for (i in 1:6) {
+    coeficientes <- coef(object = Modelo1, id = i)
+    predictores <- test_matrix[, names(coeficientes)]
+    predicciones <- predictores %*% coeficientes
+    validation_error[i] <- mean((nba$Salary[-train] - predicciones)^2)
+}
+
+which.min(validation_error)
+```
+
+Con ese error mínimo, hacemos una comparativa entre la validación que hemos calculado y el número de predicciones:
+
+```{r}
+p <- ggplot(data = data_frame(n_predictores = 1:6,
+                              Estimacion_MSE = validation_error),
+            aes(x = n_predictores, y = Estimacion_MSE)) +
+    geom_line() +
+    geom_point()
+p <- p + geom_point(aes(x = n_predictores[which.min(validation_error)], 
+                        y = validation_error[which.min(validation_error)]),
+                        colour = "pink", size = 3)
+
+p <- p +  scale_x_continuous(breaks = c(0:6)) + 
+          theme_bw() +
+          labs(title = 'validation MSE vs número de predictores',
+               x =  'número predictores')
+p
+```
+
+Calculamos ahora los coeficientes del mejor modelo y su estimación. 
+
+```{r}
+Modelo3 <- regsubsets(Salary~.-(Player + Equipo + Country), data = nba, nvmax = 6, method = "forward")
+coef(object = Modelo3, id = 5)
+```
+
+Estos resultados, cuya medida son euros, muestran el error en cada variable al intentar calcular el sueldo de los jugadores, de forma que si tenemos en cuenta la edad, por ejemplo, afectará de manera positiva el sueldo final en unos 510 mil euros.  
+
+----------------
+CUARTO PASO:
+----------------
+
+Finalmente llegamos a la parte de la práctica en la que aplicamos uno de los métodos de regulación para averiguar el error medio final de nuestro modelo. Ponemos una nueva semilla, igual que antes, y creamos dos nuevos objetos que vamos a utilizar para el training y el testing. Le adjudicamos al training el 70% (la parte grande de la muestra) de la base de datos y el testing se hará sobre el 30%.
+
+```{r}
+set.seed(1)
+Modelo_split <- initial_split((nba), prop = .7, strata = "Salary")
+Modelo_train <- training(Modelo_split)
+Modelo_test <- testing(Modelo_split)
+```
+
+Creamos las nuevas matrices que usaremos en el modleo Lasso o Ridge tanto en training como en testing. En el caso de las y, existía la posibilidad de aplicarle un logaritmo neperiano a los datos que se usan. Sin embargo, no estaba del todo claro de qué forma se representaban los resultados, así que tomé la decisión de no aplicarlo. 
+
+```{r}
+Modelo_train_x <- model.matrix(Salary ~.-(Equipo + Player + Country), nba)[, -1]
+Modelo_train_y <- (nba$Salary)
+
+Modelo_test_x <- model.matrix(Salary ~ .-(Equipo + Player + Country), nba)[, -1]
+Modelo_test_y <- (nba$Salary)
+
+```
+
+
+Para llegar a un error medio final, podemos usar tres métodos distintos: Ridge, Lasso o Elastic Net (este último es una combinación de Ridge y Lasso y también el que se suele usar más). Cualquiera de los tres es válido, pero para evitar tener que realizar los tres métodos y elegir el mejor, decido, utilizando la librería caret y sus funciones, encontrar cuáles serían el valor de alpha y de lamba ideales para mi modelo. Si alpha es igual a 0, será más óptimo utilizar el método Ridge y si alpha es igual a 1, utilizaremos Lasso. 
+
+```{r}
+library(caret)
+Train_Final <- trainControl(method = "cv", number = 10)
+caret_Modelo <- train(
+  x = Modelo_train_x,
+  y = Modelo_train_y,
+  method = "glmnet",
+  preProc = c("center", "scale", "zv", "nzv"),
+  trControl = Train_Final,
+  tuneLength = 10
+)
+caret_Modelo
+```
+
+Finalmente, vemos que los valores finales para el modelo fueron alpha = 1 y lambda = 132842.7. Consecuentemente, tomamos la decisión de usar el método Lasso. Sacamos como dato importante también que, con ese lambda y ese alpha, el Mean Squared Error (MSE) vale 5140687. Esto será útil para hacer una comparativa de resultados en la conclusión. 
+
+
+CON CARET DECIDO LLEVAR A CABO EL METODO LASSO. Calculamos el modelo con Lasso y creamos un gráfico en el que se representan las variables del modelo con su respectivo error según una serie de lambdas.
+```{r}
+Modelo_Lasso <- glmnet(
+  x = Modelo_train_x,
+  y = Modelo_train_y,
+  alpha = 1
+)
+
+plot(Modelo_Lasso, xvar = "lambda", label = TRUE)
+```
+
+El siguiente paso es calcular el cross validation del modelo Lasso y, en el gráfico representativo, vemos un crecimiento exponencial del error medio cuadrado (MSE) a medida que lambda va incrementando; sacamos como conclusión que la mejor forma de reducir dicho error será buscando el valor mínimo de lambda teniendo alpha = 1, para hacer la predicción final del error con ese lambda. 
+
+```{r}
+Modelo_Lasso <- cv.glmnet(
+  x = Modelo_train_x,
+  y = Modelo_train_y,
+  alpha = 1
+)
+
+plot(Modelo_Lasso)
+```
+
+Tras la conlcusión a la que hemos llegado con el gráfico anterior, buscamos, en nuestro modelo Lasso, el valor mínimo de lambda con el que realizaremos después la predicción final del error de nuestro modelo. Probamos distintos valores de lambda en Lasso para buscar el mínimo:
+
+```{r}
+min(Modelo_Lasso$cvm)       
+Modelo_Lasso$lambda.min     
+Modelo_Lasso$cvm[Modelo_Lasso$lambda == Modelo_Lasso$lambda.1se]  
+Modelo_Lasso$lambda.1se 
+
+Modelo_Lasso_min <- glmnet(
+  x = Modelo_train_x,
+  y = Modelo_train_y,
+  alpha = 1,
+  lambda = Modelo_Lasso$lambda.min
+)
+
+coef(Modelo_Lasso_min)
+```
+
+Vemos que el valor mínimo de lambda se calcula con Modelo$lambda.min, con lo cual creamos un nuevo objeto en el que usamos la funcion glmnet paara ajustar los datos de nuestro modelo Lasso al valor de lambda que hemos encontrado. Obtenemos un modelo que representa lo que esperamos que sea el mínimo error medio posible. El coeficiente de ese modelo nos muestra, además, las variables que se consideran relevantes y que influyen en dicho error. 
+
+Hacemos la predicción del error medio del modelo para la parte del test, en donde la variacion está en millones de euros. Le hacemos la raiz cuadrada al error para sacar el precio en euros real y ver por cuánto fallaríamos al calcular el sueldo de los jugadores. 
+
+```{r}
+pred <- predict(Modelo_Lasso_min, s = Modelo_Lasso_min$lambda.min, Modelo_test_x)
+MSE_Lasso <- sqrt(mean((Modelo_test_y - pred)^2))
+MSE_Lasso
+```
+
+Ese sería el error final de nuestro modelo. 
+
+----------------
+EXTRA:
+----------------
+
+A pesar de que sabemos que el méjor método para encontrar dicho error era el Lasso, debido a la función caret que hemos aplicado antes, decido estudiarlo también con Ridge para comprobarlo. El método es muy similar. 
+METODO RIDGE
+
+```{r}
+Modelo_Ridge <- glmnet(x = Modelo_train_x, y = Modelo_train_y, alpha = 0)
+plot(Modelo_Ridge, xvar = "lambda", label = TRUE)
+
+```
+
+```{r}
+Modelo_Ridge <- cv.glmnet(x = Modelo_train_x, y = Modelo_train_y, alpha = 0, nfolds = 10, type.measure = "mse")
+plot(Modelo_Ridge)
+```
+
+Podemos ver como en el caso de Ridge, el MSE incrementa también exponencialmente pero con mayor inclinación que en el método Lasso, lo cual nos indica que el error será mayor en lambdas que con Lasso era menor. 
+
+Buscamos de nuevo el valor mínimo de lambda en este modelo
+
+```{r}
+Modelo_Ridge$lambda.min
+Modelo_Ridge$lambda.1se
+```
+
+```{r}
+Modelo_Ridge <- glmnet(x = Modelo_train_x, y = Modelo_train_y, alpha = 0, lambda = 4472916)
+coef(Modelo_Ridge)
+```
+
+```{r}
+pred2 <- predict(Modelo_Ridge, s = Modelo_Ridge$lambda.1se, Modelo_test_x)
+MSE_Ridge <- sqrt(mean((Modelo_test_y - pred2)^2))
+MSE_Ridge
+```
+
+Vemos como, efectivamente, el error es mayor estudiando el modelo con el método ridge que cuando usamos Lasso. 
+
+----------------
+CONCLUSIÓN:
+----------------
+
+Hacemos una comparativa de los errores obtenidos hasta el momento para llegar a una conclusión final y obtenemos lo siguiente: 
+
+```{r}
+MSE_Validación <- 5140687
+Modelo <- c("lasso", "ridge regresion", "validación del forward")
+test_MSE <- c(MSE_Lasso, MSE_Ridge, MSE_Validación)
+resultados <- data.frame(Modelo, test_MSE)
+resultados
+```
+
+El error más pequeño es obtenido con el modelo estudiado con el método Lasso, un error medio de uno 5.038.000 euros en el cálculo de el sueldo de los jugadores de la NBA. 
+
+

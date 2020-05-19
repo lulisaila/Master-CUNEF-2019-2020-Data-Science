@@ -1,0 +1,450 @@
+---
+title: "Prediccion Parte 2"
+author: "Lucia Saiz Lapique"
+date: "16/1/2020"
+output: pdf_document
+---
+
+### PREDICCIÓN: REGRESIÓN REGULARIZADA
+
+## Indice
+1.	Carga de datos y eliminación de variables 
+2.	Trato de variables
+  a.	Factorizar
+  b.	Dummies
+3.	Modelos prueba
+4.	Selección el mejor modelo
+5.	Cross Validation
+6.	Ridge y Lasso
+7.	Selección de mejor modelo 2
+8.	Comparación de predicciones y curvas ROC
+9.	Selección del mejor modelo 3
+10.	Cut-off óptimo
+11.	Predicción final y curva ROC
+12.	Conclusiones
+
+
+## 1.	Carga de datos y eliminación de variables 
+
+Primero cargamos de golpe todas las librerias que vamos a utilizar. 
+```{r}
+library(readr)
+library(skimr)
+library(dplyr)
+library(tidyverse)
+library(corrplot)
+library(PerformanceAnalytics)
+library(Rtsne)
+library(fastDummies)
+library(rsample)
+library(knitr)
+library(rmarkdown)
+library(ISLR)
+library(ggplot2)
+library(ggfortify)
+library(boot)
+library(verification)
+library(ROCR)
+library(glmnet)
+library(caret)
+library(rsq)
+```
+
+Creamos un nuevo proyecto donde guardaremos todos los datos útiles para esta práctica. 
+```{r}
+datos <- read_csv("Datos_Finales.csv")  # datos estudiados en el EDA
+pred_datos <- dplyr::select(datos, -c(Meal, ReservationStatus, RequiredCarParkingSpaces, TotalOfSpecialRequests, Country, ArrivalDate)) # eliminamos las variables específicas para la práctica de agrupación. 
+```
+
+## 2.	Trato de variables 
+
+```{r}
+# factorizamos las variables categoricas para dividir la base de datos en numericas y categoricas y después hacer dummies para hacer glm con las categoricas
+pred_datos$MarketSegment <- as.factor(pred_datos$MarketSegment)
+pred_datos$DepositType <- as.factor(pred_datos$DepositType)
+pred_datos$CustomerType <- as.factor(pred_datos$CustomerType)
+pred_datos$MotivoViaje <- as.factor(pred_datos$MotivoViaje)
+pred_datos$Repetir <- as.factor(pred_datos$Repetir)
+pred_datos$Findes <- as.factor(pred_datos$Findes)
+pred_datos$IsRepeatedGuest <- as.factor(pred_datos$IsRepeatedGuest)
+pred_datos$DiferenciasReserva <- as.factor(pred_datos$DiferenciasReserva)
+pred_datos$IsCanceled <- as.factor(pred_datos$IsCanceled)
+```
+
+```{r}
+pred_numericas <- scale(pred_datos[, !sapply(pred_datos, is.factor)]) # dividimos base de datos: numericas todas las que no sean factor y categoricas las que si
+pred_categoricas <- pred_datos[, sapply(pred_datos, is.factor)]
+```
+
+
+```{r}
+# hacemos las variables categoricas dummy con la funcion dummy_cols de la librerya fastDummies
+datos_dummies <- fastDummies::dummy_cols(pred_categoricas)
+datos_dummies <- dplyr::select(datos_dummies, -c(MarketSegment, IsRepeatedGuest_0, IsRepeatedGuest, DepositType, CustomerType, MotivoViaje, DiferenciasReserva, Repetir, Findes, IsCanceled_0, IsCanceled)) ## tenemos q incluir dplyr porque las librerias que tenemos se pisan unas a otras en ciertas funciones. eliminamos las variables originales ya que ya vienen explicadas por las dummies que hemos creado. 
+datos_dummies <- dplyr::rename(datos_dummies, IsCanceled = IsCanceled_1)
+```
+
+```{r}
+datos_final <- cbind(datos_dummies, pred_numericas) # unimos base de datos numerica con categoricas hechas dummies. Aqui descubrimos que tuvimos que eliminar la fecha y el pais porque nos generaban demasiadas variables
+```
+
+## 3.	Modelos prueba
+
+# PRRIMER MODELO DE RUEBA
+```{r}
+modelo_prueba <- glm(IsCanceled ~. -(MarketSegment_Complementary + DepositType_Refundable + CustomerType_Contract + MotivoViaje_Agent + DiferenciasReserva_Mismo + Repetir_NoRepiten + Findes_Ambos), data=datos_final, family="binomial", maxit = 100) # primer modelo, quitando una variable de cada tipo de dummy para que no haya overfitting
+summary(modelo_prueba)
+# como base de datos elegimos datos_final (numericas y dummies, family = binomial implica que necesitamos las variables como dummies en el caso de las categoricas y es la que hay que pedir en el glm)
+```
+
+# SEGUNDO MODELO AJUSTADO
+
+```{r}
+modelo1 <- glm(IsCanceled ~. -(MarketSegment_Complementary + DepositType_Refundable + CustomerType_Contract + MotivoViaje_Agent + DiferenciasReserva_Mismo + Repetir_NoRepiten + Findes_Ambos + MarketSegment_Groups + `MarketSegment_Online TA` + `DepositType_No Deposit` + Findes_SoloEntreSemana + Findes_SoloFindes), data = datos_final, family = "binomial", maxit = 100)
+summary(modelo1)
+# lanzamos el primer modelo quitando las que el modelo de prueba nos ha mostrado como poco relevantes
+```
+
+# TERCER MODELO AJUSTADO
+
+```{r}
+modelo2 <- glm(IsCanceled ~. -(MarketSegment_Complementary + DepositType_Refundable + CustomerType_Contract + MotivoViaje_Agent + DiferenciasReserva_Mismo + Repetir_NoRepiten + Findes_Ambos + MarketSegment_Groups + `MarketSegment_Online TA` + `DepositType_No Deposit` + Findes_SoloEntreSemana + Findes_SoloFindes + CustomerType_Group + MotivoViaje_Independent), data = datos_final, family = "binomial", maxit = 100)
+summary(modelo2)
+# lanzamos el segundo modelo ajustando al modelo 1 y quitando las que no son relevantes
+```
+
+# CUARTO MODELO AJUSTADO
+
+```{r}
+modelo3 <- glm(IsCanceled ~. -(MarketSegment_Complementary + DepositType_Refundable + CustomerType_Contract + MotivoViaje_Agent + DiferenciasReserva_Mismo + Repetir_NoRepiten + Findes_Ambos + MarketSegment_Groups + `MarketSegment_Online TA` + `DepositType_No Deposit` + Findes_SoloEntreSemana + Findes_SoloFindes + CustomerType_Group + MotivoViaje_Independent + `CustomerType_Transient-Party`), data = datos_final, family = "binomial", maxit = 100)
+summary(modelo3)
+# lanzamos el ultimo modelo, ajustando al segundo, elimiando la variable poco relevante
+```
+
+## 4.	Selección el mejor modelo
+
+```{r}
+anova(modelo_prueba, modelo1, modelo2, modelo3, test = 'F') # con el anova seleccionamos el mejor modelo, usando el test F hacemos el contraste fisher (si el modelo es significativo en su conjunto o no)
+```
+Nos indica que los modelos más significativos son el tercero y el cuarto. Probamos otro test para elegir uno:
+
+```{r}
+# estudiamos que modelo es mejor con tres tests:
+AIC(modelo2, modelo3)  # del aic, elegimos el modelo que tenga el menor valor
+BIC(modelo2, modelo3) # bic igual que el aic
+rsq(modelo2, adj = TRUE)# elegimos el mayor
+rsq(modelo3, adj = TRUE)
+```
+Elegimos el modelo3
+
+
+## 5.	Cross Validation
+
+```{r}
+# train y test
+set.seed(123) # nos permite que al replicar, nos salga a todos lo mismo, replicar el resultado
+train <- sample(nrow(datos_final), 0.7 * nrow(datos_final)) # cogemos el 70% de datos aleatorios de nuestra base de datos para hacer el train
+
+datos_train <- datos_final[train,]
+
+
+datos_test <- datos_final[-train,] # el resto de la base de datos sin el train (30%) es el test
+
+```
+
+
+```{r}
+#cross validation para hallar el lambda (termino de penalizacion de las variables) optimo para el modelo ridge y lasso
+
+datos_train_x <- model.matrix(IsCanceled ~ ., datos_train)[, -28] # creamos matriz para meter los datos en el ridge y el lasso. Quitamos la variable de la columna numero 28 porque es nuestra dependiente
+datos_train_y <- datos_train$IsCanceled # La no linealidad se suele resolver mediante logaritmos en uno de los dos lados, pero como no tenemos, no lo usamos 
+
+datos_test_x <- model.matrix(IsCanceled ~ ., datos_test)[, -28] # mismo que en el train
+datos_test_y <- datos_test$IsCanceled
+```
+
+```{r}
+# buscamos el lambda optimo del ridge
+datos_ridge <- cv.glmnet( 
+  x = datos_train_x,
+  y = datos_train_y, 
+  alpha = 0 # obligando a que sea cresta (ridge)
+)
+```
+
+```{r}
+min(datos_ridge$cvm)       # valor minimo del error cuadratico medio (MSE)
+datos_ridge$lambda.min     # lambda para el valor minimo del MSE. ¿Cual es el lambda que se consigue cuando hay un MSE que es minimo?; ese es el lambda que tengo que usar en el modelo ridge
+datos_ridge$cvm[datos_ridge$lambda == datos_ridge$lambda.1se]  # Se calcula una desviacion tipica del error minimo (MSE), no me estima lambda porque tengo un error. MSE es estimado, lo cual significa que para cada error, tengo un intervalo de confianza. 
+```
+
+```{r}
+# para calcular el lambda optimo del lasso
+datos_lasso <- cv.glmnet( 
+  x = datos_train_x,
+  y = datos_train_y, 
+  alpha = 1 # obligando a que sea lasso
+)
+```
+
+```{r}
+min(datos_lasso$cvm)       
+datos_lasso$lambda.min    
+datos_lasso$cvm[datos_lasso$lambda == datos_lasso$lambda.1se] 
+# igual que en el lasso
+```
+
+
+```{r}
+lambda_ridge <- datos_ridge$lambda.min # guardamos los valores de los dos lambdas para usarlos y sacar el mejor modelo del lasso y del ridge
+lambda_lasso <- datos_lasso$lambda.min
+```
+
+## 6.	Ridge y Lasso
+
+# RIDGE MODEL
+```{r}
+
+ridge <- train(IsCanceled ~. -(MarketSegment_Complementary + DepositType_Refundable + CustomerType_Contract + MotivoViaje_Agent + DiferenciasReserva_Mismo + Repetir_NoRepiten + Findes_Ambos), data = datos_train, method = "glmnet",
+  trControl = trainControl("cv", number = 10),
+  tuneGrid = expand.grid(alpha = 1, lambda = lambda_ridge) # no uso toda la base de datos, sino que los datos de train, donde ya me ha dividido la información en dos grupos. 
+   # metemos el lambda optimo calculado
+  )
+# calcula los coeficientes optimos del modelo ridge
+coef(ridge$finalModel, ridge$bestTune$lambda)
+# Hacemos las predicciones 
+predictions <- ridge %>% predict(datos_test) # que me haga la prediccion sobre el test. 
+# comparamos la prediccion con los datos de test que tienen en cuenta las cancelaciones para comprobar como de bien o mal predice nuestro modelo.
+data.frame(
+  RMSE = RMSE(predictions, datos_test$IsCanceled),
+  Rsquare = R2(predictions, datos_test$IsCanceled)
+)
+
+```
+
+# MODELO LASSO 
+
+```{r}
+# lanzamos el lasso igual que en el ridge
+lasso <- train(IsCanceled ~. -(MarketSegment_Complementary + DepositType_Refundable + CustomerType_Contract + MotivoViaje_Agent + DiferenciasReserva_Mismo + Repetir_NoRepiten + Findes_Ambos), data = datos_train, method = "glmnet",
+  trControl = trainControl("cv", number = 10),
+  tuneGrid = expand.grid(alpha = 1, lambda = lambda_lasso) # metemos el valor de lambda lasso 
+  )
+# Sacamos los coeficientes del modelo que muestran como influye cada variable en la dependiente. Si es negativo, tienen una relacion inversa (si uno sube el otro baja) y si es positivo, la relacion es directa
+coef(lasso$finalModel, lasso$bestTune$lambda)
+# Hacemos la prediccion con los datos de test
+predictions <- lasso %>% predict(datos_test)
+# Comparamos predicciones igual que en el ridge
+data.frame(
+  RMSE = RMSE(predictions, datos_test$IsCanceled),
+  Rsquare = R2(predictions, datos_test$IsCanceled)
+)
+```
+
+## 7.	Selección de mejor modelo 2
+
+```{r}
+models <- list(ridge = ridge, lasso = lasso)
+resamples(models) %>% summary(metric = "RMSE") # comparamos los dos modelos con el parametro de el error cuadratico medio y elegimos el menor
+```
+El valor mínimo es el del Ridge, así que ese es el modelo que nos quedamos
+
+```{r}
+# Elegimos los coeficientes mas relevantes filtrando por todas las que tengan una relacion mayor de 0.1
+coef(datos_lasso, s = "lambda.min") %>%
+  tidy() %>%
+  filter(row != "(Intercept)") %>%  # quitamos la linea de intercept que resume la union de todas las variables
+  top_n(10, wt = abs(value)) %>%  # elegimos 11 variables ya que las demas tienen una relacion menor del 0.1
+  ggplot(aes(value, reorder(row, value))) +
+  geom_point() +
+  ggtitle("Top 10 influential variables") +
+  xlab("Coefficient") +
+  ylab(NULL)
+```
+
+## 8.	Comparación de predicciones y curvas ROC
+
+# MODELO LASSO OPTIMO
+
+```{r}
+# creamos un modelo que utilice solo las variables que los coeficientes consideran como mas relevantes, usamos los datos de train y lo estudiamos
+modelo_lasso_final <- glm(IsCanceled ~ (`DepositType_Non Refund` + Repetir_RepitenCancelan + MarketSegment_Corporate + CustomerType_Transient + Repetir_RepitenNoCancelan + MotivoViaje_AgentCompany + MotivoViaje_Company + `MarketSegment_Offline TA/TO` + DiferenciasReserva_Distintos + MarketSegment_Direct), data = datos_train, family = "binomial", maxit = 100)
+summary(modelo_lasso_final)
+```
+
+PREDICCIONES 
+
+```{r}
+# Predecimos el test con los datos de test y nuestro modelo ridge optimo  
+glm.probs <- predict(modelo_lasso_final, datos_test, type = "response")
+
+# Creamos un vector para guardar los resultados
+glm.pred <- rep("0", nrow(datos_test))
+
+# Reemplazamos NO por YES cuando la probabilidad es mayor del 20%
+glm.pred[glm.probs > .2] = "1"
+
+# Creamos un vector con los resultados de la prediccion
+defaultVector <- datos_test$IsCanceled
+
+
+# Calculamos la media de los valores de la prediccion que son como los del vector y obtenemos la capacidad de nuestro modelo de predecir los casos que cancelan
+mean(glm.pred == defaultVector)
+```
+
+
+MATRIZ DE CONFUSION:
+
+```{r}
+# para ejecutar la primera matriz de confusion, aplicamos el insample, que es el estudio que se hace sobre la parte de train
+prob.glm1.insample <- predict(modelo_lasso_final, type = "response") # 
+predicted.glm1.insample <- prob.glm1.insample > 0.2 # cut off que elegimos nosotros para explicar que nuestro modelo es relevante a partir de ese punto
+predicted.glm1.insample <- as.numeric(predicted.glm1.insample)
+```
+
+```{r}
+# usamos el predicted insample que hemos calculado anteriormente para calcular la matriz de confusion 
+confusionMatrix(data = as.factor(predicted.glm1.insample), reference = as.factor(datos_train$IsCanceled), dnn = c("Predicted", "Real cases"))
+```
+
+```{r, echo = FALSE}
+## Hacemos el mismo proceso que en lo anterior pero con la parte de test para generar la matriz de confusion de test 
+prob.glm1.outsample <- predict(modelo_lasso_final, datos_test, type = "response")
+predicted.glm1.outsample <- prob.glm1.outsample > 0.2
+predicted.glm1.outsample <- as.numeric(predicted.glm1.outsample)
+```
+
+```{r, echo = FALSE}
+confusionMatrix(data = as.factor(predicted.glm1.outsample), reference = as.factor(datos_test$IsCanceled), dnn = c("Predicted", "Real cases"))
+```
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+# la curva roc nos la da los datos de prediccion, que nos proporciona una forma visual de interpretar la capacidad de prediccion de nuestro modelo.
+# El area bajo la curva roc tiene que acercarselo maximo posible a 1 para que sea mejor el modelo
+curva_roc_lasso <- roc.plot(datos_test$IsCanceled == '1', prob.glm1.outsample)$roc.vol
+curva_roc_lasso
+```
+
+#  MODELO 3 
+
+Misma ejecucion que con el modelo de ridge optimo. 
+
+```{r}
+# ejecutamos el modelo
+modelo_train_mejor <- glm(IsCanceled ~. -(MarketSegment_Complementary + DepositType_Refundable + CustomerType_Contract + MotivoViaje_Agent + DiferenciasReserva_Mismo + Repetir_NoRepiten + Findes_Ambos + MarketSegment_Groups + `MarketSegment_Online TA` + `DepositType_No Deposit` + Findes_SoloEntreSemana + Findes_SoloFindes + CustomerType_Group + MotivoViaje_Independent + `CustomerType_Transient-Party`), data = datos_train, family = "binomial", maxit = 100)
+```
+
+```{r}
+# Predecimos el test.  
+glm.probs <- predict(modelo_train_mejor, datos_test, type = "response")
+
+# Crear un vector para guardar los resultados
+glm.pred <- rep("0", nrow(datos_test))
+
+# Reemplazar NO por YES cuando la probabilidad es mayor del 20%
+glm.pred[glm.probs > .2] = "1"
+
+# Crear un vector con los resultados
+defaultVector <- datos_test$IsCanceled
+
+
+# Calculala media y nos indica como de bien predice el modelo
+mean(glm.pred == defaultVector)
+```
+
+MATRIZ DE CONFUSION
+```{r}
+# calculamos los datos para crear la matriz de confusion del train 
+prob.glm1.insample2 <- predict(modelo_train_mejor, type = "response")
+predicted.glm1.insample2 <- prob.glm1.insample > 0.2
+predicted.glm1.insample2 <- as.numeric(predicted.glm1.insample2)
+```
+
+```{r}
+confusionMatrix(data = as.factor(predicted.glm1.insample2), reference = as.factor(datos_train$IsCanceled), dnn = c("Predicted", "Real cases"))
+```
+
+```{r, echo = FALSE}
+# para calcular la matriz de confusion de la parte de test
+prob.glm1.outsample2 <- predict(modelo_train_mejor, datos_test, type = "response")
+predicted.glm1.outsample2 <- prob.glm1.outsample2 > 0.2
+predicted.glm1.outsample2 <- as.numeric(predicted.glm1.outsample2)
+```
+
+```{r, echo = FALSE}
+confusionMatrix(data = as.factor(predicted.glm1.outsample2), reference = as.factor(datos_test$IsCanceled), dnn = c("Predicted", "Real cases"))
+```
+
+```{r}
+curva_roc_modelo <- roc.plot(datos_test$IsCanceled == '1', prob.glm1.outsample2)$roc.vol
+curva_roc_modelo
+```
+
+## 9.	Selección del mejor modelo 3
+
+```{r}
+# finalmente comparamos los areas de las dos curvas roc, tanto ddel modelo optimo de ridge como del mejor modelo, para elegir cual de los dos es mejor. El mejor sera el que tenga el valor del area mas alto
+curva_roc_lasso
+curva_roc_modelo
+```
+
+## 10.	Cut-off óptimo
+
+```{r}
+# Cutoff: cuando estimamos un modelo, utilizamos el cut off para marcar el punto de corte a partir del cual el modelo es significativo
+# cut off para clasificar mejor falsos positivos y falsos negativos
+#creamos un searc grid desde 0.01 hasta 0.99 con un salto de 0.01,, para generar suficientes ejemplos y que nos muestre todos los posibles cut off que hay con su coste asociado
+searchgrid = seq(0.01, 0.99, 0.01)
+# el resultado es una matriz de 99x2, en la cual se cuardan los valores de cut off en la primera columna y los del coste en la segunda
+result = cbind(searchgrid, NA)
+# en la funcion de coste, tanto la r como pi son vectores
+cost1 <- function(r, pi){
+  weight1 = 3  # penalizo mucho las cancelaciones, dadole mas valor a los casos en los que predecimos que no nos van a cancelar y si que nos cancelan (falsos positivos), pues es cuando mas nos afecta (conocimiento de negocio)
+  weight0 = 1 # menos penalizacion a los falsos negativos (predecimos que cancelan pero luego no lo hacen)
+  c1 = (r == 1) & (pi < pcut) #logical vector - true if actual 1 but predict 0
+  c0 = (r == 0) & (pi > pcut) #logical vector - true if actual 0 but predict 1
+  return(mean(weight1 * c1 + weight0 * c0))
+}
+# training y prediccion 
+prob <- predict(modelo_train_mejor, type = "response")
+for(i in 1: length(searchgrid))
+{
+  pcut <- result[i,1]
+  # ponemos los costes en la seguda columna
+  result[i, 2] <- cost1(datos_train$IsCanceled, prob)  
+}
+plot(result, ylab = "Cost in Training Set")
+result[which.min(result[,2]),] # valor minimo del cut off que por tanto nos aportaran los costes minimos
+```
+
+Nuestro cut-off es el 0.33
+
+## 11.	Predicción final y curva ROC
+
+```{r}
+# con el cut off optimo, predecimos de nuevo y hacemos otra vez la matriz de confusion y curva roc
+prob.glm1.insample3 <- predict(modelo_train_mejor, type = "response")
+predicted.glm1.insample3 <- prob.glm1.insample > 0.33
+predicted.glm1.insample3 <- as.numeric(predicted.glm1.insample3)
+```
+
+```{r}
+confusionMatrix(data = as.factor(predicted.glm1.insample3), reference = as.factor(datos_train$IsCanceled), dnn = c("Predicted", "Real cases"))
+```
+
+```{r, echo = FALSE}
+prob.glm1.outsample3 <- predict(modelo_train_mejor, datos_test, type = "response")
+predicted.glm1.outsample3 <- prob.glm1.outsample3 > 0.33
+predicted.glm1.outsample3 <- as.numeric(predicted.glm1.outsample3)
+```
+
+```{r, echo = FALSE}
+confusionMatrix(data = as.factor(predicted.glm1.outsample3), reference = as.factor(datos_test$IsCanceled), dnn = c("Predicted", "Real cases"))
+```
+
+```{r}
+# curva roc con el mejor modelo y el cut off optimo
+roc.plot(datos_test$IsCanceled == '1', prob.glm1.outsample3)$roc.vol
+```
+
+posibilidades para mejorarlo: establecer otro muestreo del train y el test, lanzar elastic net para mejorar la seleccion de varibles de cara a obtener un mejor accuracy en el m

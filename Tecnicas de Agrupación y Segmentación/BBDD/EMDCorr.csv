@@ -1,0 +1,8 @@
+;pvp;Cilindrada (cm cúbicos);Potencia (CV);peso;Número de plazas;Consumo 120 km/h;Velocidad máxima
+pvp;1;0.701;0.699;0.775;0.305;0.667;0.543
+Cilindrada (cm cúbicos);0.701;1;0.787;0.695;0.231;0.641;0.623
+Potencia (CV);0.699;0.787;1;0.528;0.139;0.607;0.86
+peso;0.775;0.695;0.528;1;0.473;0.511;0.339
+Número de plazas;0.305;0.231;0.139;0.473;1;0.195;0.091
+Consumo 120 km/h;0.667;0.641;0.607;0.511;0.195;1;0.513
+Velocidad máxima;0.543;0.623;0.86;0.339;0.091;0.513;1

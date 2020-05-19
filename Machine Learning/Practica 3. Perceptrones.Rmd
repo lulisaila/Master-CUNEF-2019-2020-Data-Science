@@ -1,0 +1,217 @@
+---
+title: "Practica 2"
+author: "Lucia Saiz Lapique"
+date: "15/11/2019"
+output: pdf_document
+---
+
+Hay dos subconjuntos, debemos encontrar donde esta la separación. Los casos de fraude, normalmente están distribuidos de forma no lineal y no es tan simple como trazar una linea y separarlos; hay que jugar con dimensiones. 
+
+Red neuronal: conjunto de muchos de estos. Es una regresión más
+
+creamos un algoritmo que imite esta regla
+
+The algorithm is the following:
+tienes un espacio y tira una linea al azar, calcula los errores y lueg ocalcula como tiene que variar el angulo y cuanto se tiene que mover hacia un lado y otro
+```{r, eval = FALSE}
+# w, x, y are vectors
+
+w = 0
+
+# b parameter must also be included for the peceptron algorithm to deliver a valid separator.
+# for incorrectly classified training samples b must be adjusted, too:
+
+while any training observation (x, y) is not classified correcty {
+  set w = w + learning_rate * yx
+  set b = b + learning_rate * yR^2
+  # where R is some constant larger than the distance from the
+  # origin to the furtherest training sample
+}
+```
+
+## Coding the algorithm
+
+```{r}
+dist_plano = function(z, w, b) {  # funcion del plano, la funcion nos ayuda a calcular la distancias de los puntos al plano (distancia Eucladiana)
+  sum(z * w) + b
+}
+
+clasif_linear = function(x, w, b) {
+  
+  distancias = apply(x, 1, dist_plano, w, b) # distancia de todos los puntos al plano con un apply para no hacer un bucle. aplicando la funcion al plano que forman la w con la b
+  return(ifelse(distancias < 0, -1, +1))
+}
+
+norma_eucl <- function(x) {
+  
+  return(sqrt(sum(x * x)))
+}
+
+funcion_perc <- function(x, y, learning.rate = 1) {
+  
+  w = vector(length = ncol(x)) # initialize w, necesito un coeficiente para variable y tengo que saber cuantas variables tengo, inicializo el coeficiente con las variables que tenga. esta vacio. W es una matrzi, ojo. 
+  b = 0 # Initialize b. Termino independientet solo hay uno
+  iteraciones = 0 # count iterations
+  R = max(apply(x, 1, norma_eucl))
+  
+  convergence = FALSE # to enter the while loop. # deja de converger en el momento en el que una prediccion falle, muy restrcitivo. en condiciones normales no va a acabar. Hay que meterle mano aqui para que no sea tan restrictivo 
+  
+  while (!convergence) {  # mientras que no haya convergencia, mientras que el criterio que me has pedido no sea verdad, seguimos. 
+    convergence = TRUE # hopes luck
+    yc <- clasif_linear(x, w, b)
+    
+    for (i in 1:nrow(x)) { # para cada punto, mira si esta bien predicho. En el momento en el que haya uno que no, dime que no, y actualiza el plano porque ya hay uno que esta fallando. 
+      
+      if (y[i] != yc[i]) {
+        convergence <- FALSE 
+        w <- w + learning.rate * y[i] * x[i,] # en base a la tasa de aprendizaje se modifica el valor. Los nuevos coeficientes son los antiguos modificados por la tasa de aprendizaje teniendo en cuenta tb lo que me tendria que haber dado. 
+        b <- b + learning.rate * y[i] * R^2
+        iteraciones <- iteraciones + 1
+        vector_it <- c(vector_it, iteraciones)
+        y_pred <- clasif_linear(x, w, b)
+        errores <- c(errores, sum(abs(y - y_pred)))
+      }
+    }
+  }
+
+s = norma_eucl(w)
+nuevo <- data.frame(vector_it, errores)
+
+return(list(w = w/s, b = b/s, steps = iteraciones, data = nuevo))
+}
+```
+
+```{r}
+dist_plano(1, 2, 3)
+```
+
+
+Generate data:
+tienes un espacio y tira una linea al azar, calcula los errores y luego calcula como tiene que variar el angulo y cuanto se tiene que mover hacia un lado y otro.
+
+
+```{r}
+# very easy
+# x2 = x1 + 1/2
+x1 <- runif(100,-1,1)
+x2 <- runif(100,-1,1)
+
+x <- cbind(x1,x2)
+y <- ifelse(x2 > 0.5 + x1, +1, -1)
+
+PlotData <- function(x, y) {
+  plot(x, pch = ifelse(y > 0, "+", "-"), xlim = c(-1,1), ylim = c(-1,1), cex = 2)
+  abline(0.5,1)
+  points(c(0,0), c(0,0), pch = 19)
+  lines(c(0,-0.25), c(0,0.25), lty = 2)
+  arrows(-0.3, 0.2, -0.4, 0.3)
+  text(-0.45, 0.35, "w", cex = 2)
+  text(-0.0, 0.15, "b", cex = 2)
+}
+
+PlotData(x, y)
+```
+
+Test the perceptron
+aplicamos el perceptron
+```{r}
+learning_rate <- 0.01
+
+perceptron <- funcion_perc(x,y ,learning_rate)
+
+prediccion <- clasif_linear(x, perceptron$w, perceptron$b)
+# error
+
+print(sum(abs(y - prediccion)))
+```
+
+```{r}
+perceptron$steps
+```
+
+
+
+```{r}
+df <- the_perceptron$datos
+plot(df$vector_iteraciones,df$vector_errores)
+```
+
+
+
+3. Dataframe con muchos datos, buscando algo que no converga (sin tener que utilizar funciones muy complejas).
+
+```{r}
+# very easy
+# x2 = x1 + 1/2
+x1b <- runif(500,-1,1)
+x2b <- runif(500,-1,1)
+
+xb <- cbind(x1b,x2b)
+yb <- ifelse(x2b > 0.5 + x1b, +1, -1)
+
+PlotData <- function(x, y) {
+  plot(x, pch = ifelse(y > 0, "+", "-"), xlim = c(-1,1), ylim = c(-1,1), cex = 2)
+  abline(0.5,1)
+  points(c(0,0), c(0,0), pch = 19)
+  lines(c(0,-0.25), c(0,0.25), lty = 2)
+  arrows(-0.3, 0.2, -0.4, 0.3)
+  text(-0.45, 0.35, "w", cex = 2)
+  text(-0.0, 0.15, "b", cex = 2)
+}
+
+PlotData(xb, yb)
+
+```
+
+
+
+
+4. Modificar el algoritmo para que sino converga pare: introducir un criterio de parada en función del número de iteraciones (probarlo con un número muy alto de iteraciones).
+
+Errores con la función de Perceptron que acumula errores cada vez que se cambia el valor de los parámetros (dentro del IF)
+
+```{r}
+learning_rate <- 0.1
+the_perceptron <- PerceptronFunction(xb,yb,learning_rate)
+
+predicted_y <- ClassifyLinear(xb, the_perceptron$w, the_perceptron$b)
+```
+
+Grafico
+
+```{r}
+df1 <- the_perceptron$datos
+
+plot(df1$vector_iteraciones,df1$vector_errores)
+```
+
+
+Errores con la función de Perceptron que acumula errores cada vez que termina de recorrer todos las filas de lal vector y (dentro del while)
+
+```{r}
+learning_rate <- 0.1
+the_perceptron2 <- PerceptronFunction2(xb,yb,learning_rate)
+
+predicted_y <- ClassifyLinear(xb, the_perceptron$w, the_perceptron$b)
+```
+
+
+
+```{r}
+the_perceptron2$steps
+```
+
+
+2. Representación grafica
+
+```{r}
+df2 <- the_perceptron2$errorEvolution
+
+plot(df2[,1],df2[,2])
+```
+
+# Assignment
+
+1. Try other learning rates. Which one is the cost function? Explain the algorithm (help: http://www.dbs.ifi.lmu.de/Lehre/MaschLernen/SS2014/Skript/Perceptron2014.pdf)
+2. Try to plot the plane (or the line) every *z* iterations
+

@@ -1,0 +1,155 @@
+---
+title: "Prediccion Parte 3"
+author: "Lucia Saiz Lapique"
+date: "18/1/2020"
+output: pdf_document
+---
+ 
+
+ 
+```{r, message = FALSE}
+library(readr)  # cargamos las librerias
+library(skimr)
+library(dplyr)
+library(tidyverse)
+library(PerformanceAnalytics)
+library(Rtsne)
+library(fastDummies)
+library(rsample)
+library(knitr)
+library(rmarkdown)
+library(ISLR)
+library(ggplot2)
+library(ggfortify)
+library(boot)
+library(verification)
+library(glmnet)
+library(caret)
+library(rsq)
+library(forecast)
+library(xts)
+```
+
+# Formas de expresar una serie temporal: ets, zoo y xts. Con datos diarios, xts;
+# con datos trimestrales, zoo y xts. Importante poder movernos entre las tres porque 
+# hay librerias que no pueden interpretar algunas. Al ser zoo, ya no lo podemos
+# ver como una hoja de cálculo. 
+
+```{r, message = FALSE}
+datos <- read_csv("Datos_Finales.csv")  # datos estudiados en el EDA
+pred_datos <- dplyr::select(datos, -c(Meal, ReservationStatus, RequiredCarParkingSpaces, TotalOfSpecialRequests)) # eliminamos las variables específicas para la práctica de agrupación. 
+```
+
+
+
+Primera variable
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+pred_datos$Reservas <- 1 # creamos una nueva variable llamada reservas para ir contando el numero que hay en total por dia de reserva realizada
+```
+
+```{r}
+# transformamos la variable arrivaldate para que represente el dia en el que se hace la reserva 
+pred_datos$ArrivalDate <- pred_datos$ArrivalDate - pred_datos$Anticipacion_reserva
+```
+
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+temp_serie <- pred_datos %>%  # creamos la serie temporal formada por la fecha de reserva y el numero de reservas que se hizo cada dia
+  group_by(ArrivalDate) %>%
+  summarise(Reservas = sum(Reservas))  
+```
+
+```{r}
+xReservas <- xts(pred_datos$Reservas, order.by =    # creamos la forma de crear una serie temporal con datos diarios ya que asi es como viene dada nuestra informacion
+                   as.Date(pred_datos$ArrivalDate),frequency = 365.25)
+```
+
+```{r}
+xReservas <- apply.weekly(xReservas, sum) # conviertes los datos diarios en semanales pues es lo que pide el ejercicio
+```
+
+```{r}
+autoplot(xReservas)+ggtitle("Reservas Semanales   Hotel")+xlab("Semanas")+ylab("Reservas") # representacion grafica de la serie temporal, donde surge una linea en los primeros dos años por una serie de outliers que decidimos dejar para no perder informacion
+```
+
+```{r}
+cOmit = 4 # seleccionamos 4 semanas como lo que excluiremos del final para predecir con el modelo arima
+nObs = length(xReservas)
+```
+
+```{r}
+oReservas <- window(xReservas, start = index(xReservas[1]), end =   index(xReservas[nObs-cOmit]))  ## nueva serie temporal excluyendo los datos que se utilizaran en la prediccion
+```
+
+```{r}
+reservas_ts <- ts(oReservas, frequency = 365.25/7) # ts predice mejor que xts, asi que decidimos crear una nueva serie temporal
+```
+
+```{r}
+autoplot(reservas_ts)  # representacion grafica de la serie temporal de tipo ts
+```
+
+```{r}
+plot(decompose(reservas_ts))
+```
+Si el valor actual depende de las anteriores, errores (en mi caso son mas aleatorios, lo cual es bueno porq no dependen de los errores de las semanas pasadas)
+
+
+```{r}
+acf(reservas_ts)
+pacf(reservas_ts)
+```
+No hay ruido blanco (porque se salen de las bandas, pero nos lo dice el modelo arima si depende de los errores pasados mas adelante)
+
+
+ARIMA
+
+```{r}
+df_new <- data.frame(value = as.vector(reservas_ts),
+                     time = time(reservas_ts))
+fit1 = auto.arima(reservas_ts, lambda = 0)
+summary(fit1)
+```
+Te busca el mejor modelo teniendo en cuenta si es estacionario, estacional, si hay ruido blanco, etc. Número de reservas en las que se equivoca (tengo el error medio de reservas por semanas). Comenta los q quieras.
+Para tener estacionaridad depende de: 
+observado, diferencia, error. LA diferencia de primer orden consiste en restar a la serie original la misma serie pero retardar un periodo. 
+
+Ruido blanco: los errores no afectan, pueden ser aleatorios. No tienen tendencia
+En este caso no hay ruido blanco porque los errores actuales dependen de los errores de las tres observaciones anteriores. 
+
+
+```{r}
+ggtsdisplay(fit1$residuals) # le estoy pidiendo los errores. graficos abajo: correlacion del error actual con los errores anteriores. creemos q es ruido blanco porq hay pocos q se salen de la banda y no hay tendencia en el grafico de arriba
+```
+
+```{r}
+#box-Ljung Test
+Box.test(fit1$residuals,lag=4, fitdf=3, type="Lj") # residuos, error del modelo, 
+# no tiene info que los explique y por tanto es ruido blanco
+Box.test(fit1$residuals,lag=8, fitdf=3, type="Lj") # el error se encuentra dentro 
+# de las bandas, dentor del intervalo de confianza, asi que efectivamente, 
+# es ruido blanco
+Box.test(fit1$residuals,lag=12, fitdf=3, type="Lj")
+# hemos tenido que estimar tres parametros para sacar el p valor
+
+# como todos son superiores a 0.05, no son significativos, y por tanto, es ruido blanco. No dependen de los anteriores. 
+```
+Como los p valor son mayores que 0.05, comprobamos que el la serie temporal es estacionaria
+
+```{r}
+freservas_arima = forecast(fit1, h = 8)
+ggplot(df_new) + geom_point(aes(x = time,y = value)) + geom_line(aes(x=time,y=value)) + geom_forecast(freservas_arima, color = 'pink') + ggtitle("ARIMA: Predicción Reservas")
+```
+
+
+```{r}
+freservas_arima
+```
+
+La incertidumbre se representa por la dispersion de la anchura (la prediccion puede estar en cualquier punto del rango entre lo 80 y hi80 o lo95 y hi95, estos ultimos son menos probables). 
+El riesgo esta directamente relacionado con la simetria con respecto al central estimado (point forecast).
+
+
+```{r}
+tail(xReservas, 4) # ultimos valores de la serie temporal original para comparar con el resultado de la prediccion, point forecast
+```
+

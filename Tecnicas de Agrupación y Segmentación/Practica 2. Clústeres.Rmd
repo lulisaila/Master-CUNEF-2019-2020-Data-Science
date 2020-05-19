@@ -1,0 +1,163 @@
+---
+title: "Los coches del jefe"
+author: "Lucia Saiz Lapique"
+date: "26/11/2019"
+output: pdf_document
+---
+
+Cargamos las librerías que vamos a utilizar
+```{r, warning = FALSE}
+library(readr)
+library(skimr)
+library(corrplot)
+library(PerformanceAnalytics)
+library(haven)
+library(tidyr)
+library(dplyr)
+library(corrplot)
+library(NbClust)
+library(factoextra)
+```
+
+## EDA e ingeniería de variables
+
+Cargamos los datos y los estudiamos con un resumen de sus estadísticos. 
+```{r, warning = FALSE}
+terreno <- read_sav("C:/Users/Luli/Desktop/TODO/GitHub/lulisaila-Master_Data_Science_CUNEF/Tecnicas de Agrupación y Segmentación/BBDD/tterreno.sav")
+skim(terreno)
+```
+
+Tras analizar todas las variables, vemos como tener dos variables de consumo no es necesario, así que generamos una nueva con la media de las dos anteriores. Además, creamos una base de datos solo con las variables numéricaas para estudiar sus correlaciones y generar los clústeres (se aplicará la distancia euclídea que solo funciona con valores numéricos)
+```{r}
+terreno$consumo_media = (terreno$cons90 + terreno$cons120) / 2
+terreno_num <- terreno[,-(1:2)]
+terreno_final_num <- terreno_num[,-c(2, 8, 9, 11, 13)]
+summary(terreno_final_num)
+```
+
+Imputamos valores en los campos vacios de las variables que los tienen por su media (la cual vemos en el summary anterior) y comprobamos que ya no existen valores nulos entre las variables numéricas. 
+```{r}
+terreno_final_num$peso <- replace_na(terreno_final_num$peso, 1674)
+terreno_final_num$consumo_media <- replace_na(terreno_final_num$consumo_media, 10.6)
+terreno_final_num$consurb <- replace_na(terreno_final_num$consurb, 12.59)
+terreno_final_num$acelerac <- replace_na(terreno_final_num$acelerac, 15.43)
+
+summary(terreno_final_num)
+```
+
+Estandarizamos las variables para que tengan todas la misma unidad y sacamos sus estadísticos básicos:
+```{r}
+terreno_final_sum <- scale(terreno_final_num)
+```
+
+```{r}
+q = data.frame(
+  Min = apply(terreno_final_sum, 2, min), # m?nim0
+  Med = apply(terreno_final_sum, 2, median), # mediana
+  Mean = apply(terreno_final_sum, 2, mean), # media
+  SD = apply(terreno_final_sum, 2, sd), # Desviaci?n t?pica
+  Max = apply(terreno_final_sum, 2, max) # M?ximo
+)
+q = round(q, 1)
+q
+```
+
+Se genera una matriz de distancias: 
+```{r}
+q.dist = get_dist(terreno_final_sum, stand = TRUE, method = "pearson")
+str(q.dist)
+
+fviz_dist(q.dist, lab_size = 5)
+fviz_dist(q.dist, gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"), lab_size = 5)
+```
+
+Calculamos la distancia euclídea entre las variables numéricas
+```{r}
+dist.eucl = dist(terreno_final_sum, method = "euclidean", upper = F)
+rr <- round(as.matrix(dist.eucl)[1:6, 1:6], 1)  # seis primeras observaciones de fila y de columna con dos decimales
+rr
+```
+
+```{r}
+terreno_cor = cor(t(terreno_final_sum), method = "pearson") 
+round(terreno_cor[1:6, 1:6], 2) 
+```
+
+```{r}
+correlacion = as.dist(1 - terreno_cor) 
+round(as.matrix(correlacion)[1:6, 1:6], 2)
+```
+
+## Estudio de correlaciones
+
+```{r}
+corrplot(as.matrix(dist.eucl), is.corr = FALSE, method = "color", type="lower",
+         diag=F, order="hclust", tl.cex=0.6, tl.col="blue")
+```
+
+## Clústering
+
+Primero, creamos un dendograma que muestre los clústeres óptimos en base a un número que le introduzcamos nosotros. 
+
+```{r}
+terreno_jerarquico <- hclust(dist.eucl, method = "ward.D")
+
+plot(terreno_jerarquico, cex = 0.4, ylab = "", xlab = "", axes = FALSE, ann = FALSE) + 
+  title(main = "Dendrograma")
+rect.hclust(terreno_jerarquico, k = 3, border = 2:4) 
+```
+
+```{r}
+heatmap(as.matrix(dist.eucl), symm = TRUE, distfun = function(x) as.dist(x))
+```
+
+Se crean los clústeres en dos dimensiones con lo que hemos visto que es más óptimo con el estudio de los dendogramas. 
+```{r}
+terreno_eclust = eclust(terreno_final_num, FUNcluster = "kmeans", stand=TRUE,
+                         hc_metric = "euclidean", nstart = 25, k = 10)
+
+```
+
+Generamos la silueta de los clústeres:
+```{r}
+fviz_silhouette(terreno_eclust)
+```
+
+
+```{r}
+terreno_eclust$cluster
+```
+
+```{r}
+terreno_final_num$grupos <- terreno_eclust$cluster
+```
+
+
+Finalmente, a continuación vemos un resumen de las características de cada clúster generado en función de las variables que lo definen. 
+```{r}
+medias <- terreno_final_num %>%
+  group_by(grupos) %>%
+  summarize(consumos = mean(consurb, 3),
+            potencias = mean(potencia, 3),
+            pesos = mean(peso, 3),
+            plaza = mean(plazas, 3),
+            aceleraciones = mean(acelerac, 3)
+            )
+medias
+```
+
+Comparamos con una distribución e 6 clústeres en lugar de en 10. 
+
+```{r}
+terreno_eclust2 = eclust(terreno_final_num, FUNcluster = "kmeans", stand = TRUE,
+                         hc_metric = "euclidean", nstart = 25, k = 6)
+fviz_silhouette(terreno_eclust2)
+```
+
+## Mejorar el modelo
+
+¿Cómo se podría mejorar el modelo?
+
+* Convertir variables categoricas en continuas y calcular la frecuencia relativa (discretizar variables). 
+* Histograma es el ploteo de una frecuencia relativa, ¿cómo calculamos los cortes? Computacionalmente, de manera distribuida, es muy complicado (tecnicas de algortimia, etc.), 
+* calculando los deciles por bloques y hacer media por ejemplo. 

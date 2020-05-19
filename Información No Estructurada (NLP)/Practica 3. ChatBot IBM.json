@@ -1,0 +1,614 @@
+{
+  "intents": [
+    {
+      "intent": "Reserva_mesa",
+      "examples": [
+        {
+          "text": "¿Tenéis alguna mesa libre?"
+        },
+        {
+          "text": "Me gustaría reservar una mesa."
+        },
+        {
+          "text": "Quería reservar una mesa para cinco esta noche."
+        },
+        {
+          "text": "¿Tenéis hueco para cenar hoy?"
+        },
+        {
+          "text": "¿Qué disponibilidad tenéis?"
+        }
+      ],
+      "description": "Chatbot para facilitar la reserva de una mesa en un restaurante."
+    },
+    {
+      "intent": "Despedida",
+      "examples": [
+        {
+          "text": "Eso es todo, muchas gracias."
+        },
+        {
+          "text": "Nada más"
+        },
+        {
+          "text": "Ya he terminado"
+        },
+        {
+          "text": "Muchas gracias"
+        },
+        {
+          "text": "Adios"
+        },
+        {
+          "text": "Hasta luego"
+        }
+      ],
+      "description": "Para despedirse del cliente."
+    }
+  ],
+  "entities": [
+    {
+      "entity": "sys-number",
+      "values": [],
+      "fuzzy_match": true
+    },
+    {
+      "entity": "Personas",
+      "values": [
+        {
+          "type": "synonyms",
+          "value": "Grupo mediano",
+          "synonyms": [
+            "Cinco",
+            "Cinco personas",
+            "Seis",
+            "Siete",
+            "Ocho",
+            "Nueve"
+          ]
+        },
+        {
+          "type": "synonyms",
+          "value": "Para",
+          "synonyms": [
+            "personas",
+            "gente",
+            "amigos"
+          ]
+        },
+        {
+          "type": "synonyms",
+          "value": "Grupo grande",
+          "synonyms": [
+            "10 ",
+            "Diez personas",
+            "Diez",
+            "Más de diez",
+            "doce",
+            "once",
+            "Muchos"
+          ]
+        },
+        {
+          "type": "synonyms",
+          "value": "Grupo pequeño",
+          "synonyms": [
+            "Dos personas",
+            "Dos",
+            "Tres personas",
+            "Tres",
+            "Una persona",
+            "Uno",
+            "Cuatro personas",
+            "Cuatro",
+            "Pocos"
+          ]
+        }
+      ],
+      "fuzzy_match": true
+    },
+    {
+      "entity": "sys-time",
+      "values": [],
+      "fuzzy_match": true
+    },
+    {
+      "entity": "Carta",
+      "values": [
+        {
+          "type": "synonyms",
+          "value": "Extras",
+          "synonyms": [
+            "Sin lactosa",
+            "Sin gluten",
+            "Vegano",
+            "Vegetariano ",
+            "Alérgico"
+          ]
+        },
+        {
+          "type": "synonyms",
+          "value": "Menú",
+          "synonyms": [
+            "Menú del día",
+            "Menú infantil",
+            "Menú de fin de semana"
+          ]
+        }
+      ],
+      "fuzzy_match": true
+    },
+    {
+      "entity": "Turno",
+      "values": [
+        {
+          "type": "synonyms",
+          "value": "Desayuno",
+          "synonyms": [
+            "Brunch",
+            "Almuerzo",
+            "Mañana",
+            "Café",
+            "Desayunar"
+          ]
+        },
+        {
+          "type": "synonyms",
+          "value": "Tomar",
+          "synonyms": [
+            "Café",
+            "Refresco",
+            "Cerveza",
+            "Bebida"
+          ]
+        },
+        {
+          "type": "synonyms",
+          "value": "Comer",
+          "synonyms": [
+            "Almuerzo",
+            "Comida",
+            "Almorzar",
+            "Primer Plato",
+            "Plato Principal",
+            "Menú"
+          ]
+        },
+        {
+          "type": "synonyms",
+          "value": "Cenar",
+          "synonyms": [
+            "Cena",
+            "Noche",
+            "Tarde",
+            "Comer"
+          ]
+        }
+      ],
+      "fuzzy_match": true
+    },
+    {
+      "entity": "sys-date",
+      "values": [],
+      "fuzzy_match": true
+    }
+  ],
+  "metadata": {
+    "api_version": {
+      "major_version": "v2",
+      "minor_version": "2018-11-08"
+    }
+  },
+  "dialog_nodes": [
+    {
+      "type": "standard",
+      "title": "Preguntas",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "¿Desea reservar algo más?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "parent": "node_2_1588502484607",
+      "conditions": "@sys-number || @Personas",
+      "dialog_node": "node_3_1588502484607"
+    },
+    {
+      "type": "standard",
+      "title": "Preguntas",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "¿Desea reservar algo más?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "parent": "node_6_1588502535338",
+      "conditions": "@sys-time || @Turno",
+      "dialog_node": "node_7_1588502535338"
+    },
+    {
+      "type": "standard",
+      "title": "Especial",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "Sí, tenemos esa opción. ¿Quieres reservar algo más?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "parent": "node_11_1588503286505",
+      "conditions": "@Carta",
+      "dialog_node": "node_12_1588503286505"
+    },
+    {
+      "type": "standard",
+      "title": "Turno",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "¿Para qué hora quieres que sea la reserva?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "parent": "node_5_1588502535328",
+      "conditions": "@sys-date",
+      "dialog_node": "node_6_1588502535338"
+    },
+    {
+      "type": "standard",
+      "title": "Especial",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "Sí, tenemos esa opción. ¿Quieres reservar algo más?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "parent": "node_7_1588502535338",
+      "conditions": "@Carta",
+      "dialog_node": "node_8_1588502535338"
+    },
+    {
+      "type": "standard",
+      "title": "Especial",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "Sí, tenemos esa opción. ¿Quieres reservar algo más?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "parent": "node_9_1588501465173",
+      "conditions": "@Carta",
+      "dialog_node": "node_8_1588501903096"
+    },
+    {
+      "type": "standard",
+      "title": "Preguntas",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "¿Desea reservar algo más?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "parent": "node_8_1588501118888",
+      "conditions": "@sys-number || @Personas",
+      "dialog_node": "node_9_1588501465173"
+    },
+    {
+      "type": "standard",
+      "title": "Personas",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "¿Y para cuanta gente?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "parent": "node_9_1588503286500",
+      "conditions": "@sys-time || @Turno && @sys-date",
+      "dialog_node": "node_10_1588503286505"
+    },
+    {
+      "type": "standard",
+      "title": "Especial",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "Sí, tenemos esa opción. ¿Quieres reservar algo más?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "parent": "node_3_1588502484607",
+      "conditions": "@Carta",
+      "dialog_node": "node_4_1588502484607"
+    },
+    {
+      "type": "standard",
+      "title": "Preguntas",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "¿Desea reservar algo más?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "parent": "node_10_1588503286505",
+      "conditions": "@sys-number || @Personas",
+      "dialog_node": "node_11_1588503286505"
+    },
+    {
+      "type": "standard",
+      "title": "Personas",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "¿Y para cuanta gente?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "parent": "node_6_1588500762147",
+      "conditions": "@sys-time || @Turno",
+      "dialog_node": "node_8_1588501118888"
+    },
+    {
+      "type": "standard",
+      "title": "Personas",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "¿Y para cuanta gente?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "parent": "node_1_1588502484600",
+      "conditions": "@sys-time || @Turno",
+      "dialog_node": "node_2_1588502484607"
+    },
+    {
+      "type": "standard",
+      "title": "Despedida",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "Perfecto, muchas gracias. Tu reserva se ha registrado correctamente. Que pases un buen día."
+              },
+              {
+                "text": "Hasta luego."
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "conditions": "#Despedida",
+      "dialog_node": "node_9_1588501537233",
+      "previous_sibling": "node_5_1588502535328"
+    },
+    {
+      "type": "standard",
+      "title": "Día",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "¿Para qué hora quieres que sea la reserva?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "conditions": "#Reserva_mesa && @sys-date",
+      "dialog_node": "node_1_1588502484600",
+      "previous_sibling": "node_9_1588503286500"
+    },
+    {
+      "type": "standard",
+      "title": "Turno",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "¿Para qué hora quieres que sea la reserva?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "conditions": "#Reserva_mesa && @Turno",
+      "dialog_node": "node_6_1588500762147",
+      "previous_sibling": "Bienvenido"
+    },
+    {
+      "type": "standard",
+      "title": "Reserva",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "¿Para qué fecha y hora quieres que sea la reserva?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "conditions": "#Reserva_mesa",
+      "dialog_node": "node_9_1588503286500",
+      "previous_sibling": "node_6_1588500762147"
+    },
+    {
+      "type": "standard",
+      "title": "En otras cosas",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "No le he entendido. Intente reformular la consulta."
+              },
+              {
+                "text": "¿Puede expresarse con otras palabras? No le he entendido."
+              },
+              {
+                "text": "No entendí el significado."
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "conditions": "anything_else",
+      "dialog_node": "En otras cosas",
+      "previous_sibling": "node_9_1588501537233",
+      "disambiguation_opt_out": true
+    },
+    {
+      "type": "standard",
+      "title": "Personas",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "¿Para qué día quieres que sea la reserva?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "conditions": "#Reserva_mesa && @sys-number && @Personas",
+      "dialog_node": "node_5_1588502535328",
+      "previous_sibling": "node_1_1588502484600"
+    },
+    {
+      "type": "standard",
+      "title": "Bienvenido",
+      "output": {
+        "generic": [
+          {
+            "values": [
+              {
+                "text": "Hola, soy el asistente del restaurante Lucia. ¿Cómo puedo ayudarte hoy?"
+              }
+            ],
+            "response_type": "text",
+            "selection_policy": "sequential"
+          }
+        ]
+      },
+      "conditions": "welcome",
+      "dialog_node": "Bienvenido"
+    }
+  ],
+  "counterexamples": [],
+  "system_settings": {
+    "disambiguation": {
+      "prompt": "Querías decir:",
+      "enabled": true,
+      "randomize": true,
+      "max_suggestions": 5,
+      "suggestion_text_policy": "title",
+      "none_of_the_above_prompt": "Ninguna de las anteriores"
+    },
+    "system_entities": {
+      "enabled": true
+    },
+    "human_agent_assist": {
+      "prompt": "Querías decir:"
+    }
+  },
+  "learning_opt_out": false,
+  "name": "Reserva de mesa",
+  "language": "es",
+  "description": ""
+}

@@ -1,0 +1,199 @@
+---
+title: 'Tarea clase: Los pájaros de Bumpus'
+author: "Lucia Saiz Lapique"
+date: "21/11/2019"
+output: pdf_document
+---
+
+Cargamos las librerias e importamos el dataset
+```{r, message = FALSE, warning = FALSE}
+library(readr)
+library(factoextra)
+library(cluster)
+library(gridExtra)
+library(skimr)
+library(corrplot)
+library(PerformanceAnalytics)
+library(tidyverse)
+library(factoextra)
+library(FactoMineR)
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(Hmisc)
+library(psych)
+bumpus_total <- read_delim("C:/Users/Luli/Desktop/TODO/GitHub/lulisaila-Master_Data_Science_CUNEF/Tecnicas de Agrupación y Segmentación/BBDD/bumpus.txt", "\t", escape_double = FALSE, trim_ws = TRUE)
+```
+
+---------------------------
+Justificación del trabajo e hipótesis principales
+---------------------------
+
+Nos encontramos ante un dataset que recoge las caracteristicas de las aves que sorbevivieron y que no a una tormenta invernal muy poco habitual. El objetivo de este estudio es entender cuál es la razón por la que algunas aves sobrevivieron y otras no, para averiguar si sus características físicas fueron la causa de su supervivencia. 
+
+Como primera hipótesis, podemos plantear que la segmentación más clara estaría entre las aves que sobrevivieron y las que no. Como esta es la variable que queremos definir, decidimos eliminarla a la hora de hacer hacer la segmentación de las variables. En el análisis exploratorio inicial de los datos sí que lo tendremos en cuenta, ya que queremos averiguar, previo al cluster, si existe alguna dependencia directa de que el ave sobrreviva o muera conforme a sus características específicas. 
+
+Para entender por qué estas aves sobrevivieron o no a aquella tormenta, podríamos plantear la hipótesis de que las aves con mayor tamaño fueron las que sobrevivieron frente a las más pequeñas. Sin embargo, también es posible lo contrario, pues un mecanismo de adaptación al clima que tienen las aves es que, en caso de tormenta o vientos fuertes, algunas especies pequeñas son capaces de buscar refugio o aprovechar microhábitats para sobrevivir. 
+
+Al final del estudio esperamos encontrar una respuesta a esto. 
+
+--------------------------------------
+Análisis exploratorio de los datos
+--------------------------------------
+
+# Resumen de las variables
+
+En primer lugar, hacemos un resumen de todas las variables, creando un dataframe que recoja la información más relevante de posición y dispersión de cada variable. Este dataframe incluira los valores máximos y mínimos de todas las variables, además de sus medias, medianas y cuartiles. Con esta información formaremos una idea general de la dispersión de los datos. El resumen aparece a continuación: 
+```{r}
+skim(bumpus_total)
+bumpus_stats = data.frame( 
+  Min = apply(bumpus_total, 2, min), 
+  Q1 = apply(bumpus_total, 2, quantile, 1/4), 
+  Med = apply(bumpus_total, 2, median), 
+  Mean = apply(bumpus_total, 2, mean),
+  Q3 = apply(bumpus_total, 2, quantile, 3/4), 
+  Max = apply(bumpus_total, 2, max)
+)
+
+bumpus_stats = round(bumpus_stats, 1)
+bumpus_stats
+```
+En un primer estudio de las variables vemos que las variavles que menos cambian de una especie a otra son "lhum", "lfem", "ltibio", "wskull" y "lkeel", con lo cual podríamos suponer que la mitad de las variables no afectan el resultado de lo que estamos intentando averiguar. Hay 5 de 10 variables que, probablemente, no van a influir en si el ave sobrevive o no a la tormenta. 
+
+Esta deducción será importante para tener en cuenta cuando hagamos el analisis de componentes principales.
+
+# Relación entre las variables:
+
+A continuación estudiaremos la relación entre las variables, haciendo primero una matriz de correlación y generando despés una serie de gráficos de correlación para identificar de forma más clara estas relaciones:
+```{r}
+cor.mat = round(cor(bumpus_total),2) 
+cor.mat
+```
+Ya en la matriz de correlación vemos que existen relaciones más o menos importantes entre ciertas variables, tanto negativas como positivas. Sin embargo, es muy difícil sacar alguna conclusión así que las graficamos: 
+
+En primer lugar consideramos lo que más nos interesa: ¿qué relación tiene la variable que indica la supervivencia de las aves con el resto de variables? ¿existe alguna dependencia clara?
+```{r}
+corrplot(cor.mat, type = "lower", order = "original", 
+         tl.col = "black", tl.srt = 45)
+```
+La única relación que existe entre la variable supervivencia es con la variable longitud, y además es negativa; esto no nos proporciona ningún tipo de solución a la duda que hemos plantead, así que continuaremos estudiando la razón. 
+Lo que sí que podemos ver son relaciones entre las variables que antes hemos identificado como menos explicativas, lo cual tiene sentido ya que, lo que nos indican esas variables, es el tamaño de ciertas partes de los pajaros, que son más grandes o más pequeñas en función de las demás. 
+
+```{r}
+chart.Correlation(bumpus_total, histogram = TRUE, pch = 19)
+```
+Como hemos explicado en el gráfico anterior, las correlaciones más importantes del gráfico se encuentran entre las 5 últimas variables, que son las que menos información heterogénea nos aportan de toda la base de datos. 
+
+En conclusión, las correlaciones de las variables no nos aportan mucha información sobre la posible asociación o segmentación que se podría hacer, aparte de explicarnos que las últimas 5 dependen unas de otras bastante y esas podrían agruparse entre ellas.
+
+
+# Análisis de componentes principales
+
+Para elegir las dimensiones que mejor definan la supervivencia de las aves decidimos llevar a cabo un análisis de componentes principales (ACP), en el cual no tendremos en cuenta a la variable supervivencia, pues es lo que estamos intentando definir. Creamos pues una nueva base de datos que exluya a esa variable y que será la que utilicemos de ahora en adelante. 
+Al ejecutar el ACP, obtenemos los siguientes gráficos. 
+```{r}
+bumpus <- bumpus_total[,-1]
+acp <- PCA(bumpus, graph = T) 
+```
+Ambos gráficos nos definen las variables en dos dimensiones, las dos que tinen más peso de explicacion, reuniendo en total un 53,53% de toda la información. 
+
+Con el primer gráfico de dispersión no podemos ver, de forma clara, las posibles agrupaciones de las obervaciones. Todos los datos quedan concentrados más o menos por la misma zona pero de forma muy dispersa, con lo cual es dificil explicar, a primera vista, cómo se comportara el cluster final. 
+
+El segundo gráfico muestra la puntuación de las variables en el espacio. El círculo tiene un radio de una unidad, tanto en vertical como en horizontal, lo cual nos dice cuál es la puntuación de la variable en una escala normalizada. Viendo las variables representadas vemos que cada una de las dimensiones explica algo especifico de cada observación. La información que podemos obtener es la representación de las variables el espacio de factores y componentes. Esto tiene mucha más relevancia para explicar lo que hay detrás (en la estructura subyacente). El circulo de radio unitario me dice si las dos dimensiones explican mucho o poco. Como ninguna de las variables llegan a rozar el borde del círculo, concluimos que ninguna las variables están suficientemente explicadas en la base de datos, o por lo menos en estas dos dimensiones que coge el análisis. Necesitaríamos incluir más dimensiones para sacar, de forma más concreta, la estructura subyacente.
+
+```{r, message = FALSE}
+fviz_eig(acp, addlabels = TRUE, hjust = -0.3) +
+  labs(title = "Screen plot / Gráfico de sedimentación", x = "Dimensiones", y = "% Varianza explicada") + theme_minimal()
+```
+Como vemos en el gráfico, el 83,3% de toda la información queda resumida en las cuatro primeras dimensiones, que será el número de dimensiones que escojamos. 
+
+-------------------------
+Segmentación:
+-------------------------
+
+El análisis de conglomerados o cluster es una técnica que se desarrolla para combinar observaciones en grupos, que deben reunir una serie de requisitos, cuyo objetivo es agrupar las observaciones en conglomerados lo más homogéneos posible respecto de las
+variables de agrupación. Para ello debemos seguir una serie de pasos.
+
+# Escalado de los datos 
+
+En primer lugar, hay que tener en cuenta que las variables deben de ser homogéneas en forma. En este caso, contamos con datos que, según la variable, están medidos de forma heteroogénea. Como las variables vienen en distinta escala métrica, decidimos escalarlas para poder hacer la segmentación. Para ello, tenemos que tipificar los valores.
+
+```{r}
+bumpus <- scale(bumpus)
+cor.mat2 <- round(cor(bumpus),2) 
+cor.mat2
+```
+
+```{r}
+resumen <- data.frame(
+  Min = apply(bumpus, 2, min), # m?nim0
+  Med = apply(bumpus, 2, median), # mediana
+  Mean = apply(bumpus, 2, mean), # media
+  SD = apply(bumpus, 2, sd), # Desviaci?n t?pica
+  Max = apply(bumpus, 2, max) # M?ximo
+)
+
+resumen <- round(resumen, 1)
+resumen
+```
+Con el dataset de resultado tras escalar los valores de cada muestra, comprobamos como de próximas están unas obersvaciones a otras. Seguimos sin incluir la variable de supervivencia pues es lo que queremos averiguar al final, y queremos averiguar de qué forma se agruparían las observaciones sin ella. 
+
+# Distancias
+
+Para comenzar con la segmentación, hacemos una matriz de distancias de las variables y la graficamos para intentar identificar los grupos que pueda haber en la base de datos:
+
+```{r}
+resumen.dist <- get_dist(bumpus, stand = TRUE, method = "pearson")
+str(resumen.dist)
+```
+
+```{r}
+fviz_dist(resumen.dist, lab_size = 5)
+```
+En este gráfico vemos los grupos de aves distintos, el grafico siendo simétrico, que nos intenta indicar los posibles grupos en funcion de la distancia de unas variables con otras.Nno es un cluster ni mucho menos pero nos da una primera vision de lo que podrian ser los grupos segun lo aproximados o alejados que estan los datos. 
+
+# Distancia euclidiana
+
+La distancia euclidiana es un tipo de medida que estudia a qué distancia se encuentran dos puntos, basándose en el teorema de pitágoras. Es otra forma de averiguar como de cerca o lejos se encuentran los datos de nuestras observaciones, para entender que relación puede existir entre las variables que los definen. A continuación la calculamos y graficamos para medir la asociación entre las aves. 
+```{r}
+distancia <- dist(bumpus, method = "euclidean")
+dist.eucl <- dist(bumpus, method = "euclidean", upper = F)
+head(dist.eucl)
+```
+
+```{r}
+rr <- round(as.matrix(dist.eucl)[1:6, 1:6], 1)  
+rr
+```
+
+Dendograma:
+```{r}
+plot(hclust(dist.eucl, method = "ward.D2"), cex = 0.7, main = "Dendrograma", ylab = "Anchura", xlab = "Análisis cluster sobre matriz de distancias euclídeas")
+```
+En el árbol (dendograma) anterior se dividen las 56 observaciones de la base de datos según la asociación que tienen unas con otras. Vemos la primera serie de agrupaciones claras entre las observaciones, que queda definida por los niveles, la altura y el ancho de cada división. 
+con las ramitas vemos qué aves estan más o menos asociados entre ellas. La altura de la ramificación me indica en qué etapa ha ocurrido la asociación y el ancho como de unidas están entre ellas. Cuanto mayor la etapa, mas tardía es la unión. 
+
+
+# Cluster
+
+Para finalizar, generamos los clústeres, habiendo seleccionado 4 como el número óptimo de clústeres gracuas al estudio del dendograma anterior. 
+
+```{r}
+heatmap(as.matrix(dist.eucl), symm = TRUE, distfun = function(x) as.dist(x))
+bumpus_ecluster = eclust(bumpus, FUNcluster = "kmeans", stand = TRUE,
+                         hc_metric = "euclidean", nstart = 25, k = 4)
+```
+
+
+Representacion de la bondad de la asignacion de cada una de las variables al cluster
+```{r}
+fviz_silhouette(bumpus_ecluster)
+```
+
+```{r}
+bumpus_total$grupos <- bumpus_ecluster$cluster
+```
+
+
+
+

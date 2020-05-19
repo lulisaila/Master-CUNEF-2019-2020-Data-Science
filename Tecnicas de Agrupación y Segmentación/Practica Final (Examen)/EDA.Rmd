@@ -1,0 +1,269 @@
+---
+title: "Final agrupación"
+author: "Lucia Saiz Lapique"
+date: "14/1/2020"
+output: pdf_document
+---
+
+Importamos las librerias necesarias para esta parte del trabajo
+
+```{r, warning = FALSE}
+library(readr)
+library(skimr)
+library(dplyr)
+library(tidyverse)
+library(corrplot)
+library(PerformanceAnalytics)
+library(Rtsne)
+```
+
+
+## EDA
+
+Cargamos la base de datos y hacemos un estudio previo de los datos para identificar que forma tienen, si hay NAs, y ver cuántas variables hay numéricas y categóricas
+```{r, message = FALSE}
+H1 <- read_csv("H1.csv") 
+skim(H1) 
+```
+
+Hacemos una base de datos con las variables numericas para poder estudiar su correlacion, al igual que una serie de datos estadísticos:
+```{r}
+H1_num <- dplyr::select(H1,-c(Agent, ArrivalDateMonth, AssignedRoomType, Company, Country, CustomerType, DepositType, DistributionChannel, MarketSegment, Meal, ReservationStatus, ReservedRoomType, ReservationStatusDate))  
+```
+
+```{r}
+datos_stats = data.frame( 
+  Min = apply(H1_num, 2, min, na.rm = TRUE), # valor minimo de la variable
+  Q1 = apply(H1_num, 2, quantile, 1/4, na.rm = TRUE), # 1er cuartil
+  Med = apply(H1_num, 2, median, na.rm = TRUE), # mediana de la variable
+  Mean = apply(H1_num, 2, mean, na.rm = TRUE), # media de la variable
+  Q3 = apply(H1_num, 2, quantile, 3/4, na.rm = TRUE), # 3er cuartil
+  Max = apply(H1_num, 2, max, na.rm = TRUE) # valor maximo de la variable
+)
+
+datos_stats = round(datos_stats, 1) # redondeo de los datos con un decimal
+datos_stats
+```
+
+Buscamos los valores de correlacion entre las variables y graficamos las correlaciones
+```{r}
+cor.mat = round(cor(H1_num, use="complete.obs"),2)  
+
+corrplot(cor.mat, type = "full", order = "hclust", addrect = 3,
+         tl.col = "black", tl.srt = 45)
+```
+Decidimos tratar las variables en base al conocimiento del negocio, ya que no hay correlaciones significantes entre ninguna variable. 
+
+## Seleccion de variables
+
+En primer lugar, miramos si hay algun valor nulo en nuestra base de datos, y vemos qye no
+```{r}
+datos <- H1
+sum(is.na(datos)) 
+```
+
+Buscamos los datos unicos que contenga la variable MarketSegment y decidimos que se queda igual; buscamos los datos unicos que contenga la variable DistributionChannel y decidimos que no la usamos y eliminamos la variable que no queremos de nuestra base de datos
+```{r}
+unique(datos$MarketSegment) 
+unique(datos$DistributionChannel)
+datos <- dplyr::select(datos, - DistributionChannel)
+```
+
+A continuación, comparamos las variables Agent y Company, ya que hemos visto que tienen muchas cosas en comun y queremos ver en que se diferencian y si podemos eliminar alguna
+```{r}
+skim(datos$Agent)
+skim(datos$Company) # se fusionan 
+skim(datos$MarketSegment)
+
+```
+
+Decidimos fusionar la variable agent y company, dividiendo en cuatro posibilidades y creamos la variable con esas condiciones :
+```{r}
+sum(datos$Company != 'NULL' & datos$Agent == 'NULL')  # que lo busquen solo con compañia
+sum(datos$Agent != 'NULL' & datos$Company == 'NULL')  # que lo busquen solo con agencia
+sum(datos$Agent != 'NULL' & datos$Company != 'NULL') # que lo busquen con compañia y agencia
+sum(datos$Agent == 'NULL' & datos$Company == 'NULL') # aparte
+
+datos$MotivoViaje <- ifelse((datos$Company != 'NULL' & datos$Agent == 'NULL'), "Company", 99)
+datos$MotivoViaje <- ifelse((datos$Agent != 'NULL' & datos$Company == 'NULL'), "Agent", datos$MotivoViaje)
+datos$MotivoViaje <- ifelse((datos$Agent != 'NULL' & datos$Company != 'NULL'), "AgentCompany", datos$MotivoViaje)
+datos$MotivoViaje <- ifelse((datos$Agent == 'NULL' & datos$Company == 'NULL'), "Independent", datos$MotivoViaje)
+```
+
+
+Eliminamos las dos variables originales ya que tenemos toda la informacion que necesitamos en la nueva
+```{r}
+datos <- dplyr::select(datos, -c(Agent, Company))
+```
+
+Decidimos juntar todas las fechas de arrival en una
+```{r}
+unique(datos$ArrivalDateYear) 
+datos <- datos %>% mutate(ArrivalDate = paste(ArrivalDateYear, ArrivalDateMonth, ArrivalDateDayOfMonth, sep = '-')) 
+datos <- dplyr::select(datos, -c(ArrivalDateYear, ArrivalDateMonth, ArrivalDateDayOfMonth))
+datos <- dplyr::select(datos, -ArrivalDateWeekNumber)
+```
+
+Como la base de datos daba errores al interpretar la nueva variable como una fecha, decidimos exportarla
+```{r}
+write.csv(datos, file = "Datos_Fecha.csv", row.names = FALSE) 
+```
+
+```{r}
+datos <- read_csv("Datos_Fecha.csv", # aqui la importamos de nuevo y le cambiamos el formato desde el origen
+     col_types = cols(ArrivalDate = col_date(format = "%Y-%B-%d"),
+         ReservationStatusDate = col_date(format = "%Y-%m-%d")))
+```
+
+```{r}
+unique(datos$AssignedRoomType) # estudiamos las dos variables
+unique(datos$ReservedRoomType) # decidimos usar las dos especificament para prediccion, viendo si hay diferencias entre una y otra
+```
+
+calculamos cuantas veces coincide que el cliente reciba la misma habitacion que pide. En el 80% de los casos reciben lo mismo que piden. Decidimos hacerla dicotomica. Despues, eliminamos las originales:
+```{r}
+sum(datos$AssignedRoomType == datos$ReservedRoomType)
+datos$DiferenciasReserva <- ifelse((datos$AssignedRoomType == datos$ReservedRoomType), "Mismo", "Distintos")
+datos <- dplyr::select(datos, - c(AssignedRoomType, ReservedRoomType))
+```
+
+Se decide eliminar esta variable (BookingChanges) por el estudio a continuacion:
+```{r}
+unique(datos$BookingChanges) 
+sum(datos$BookingChanges == 0) # 80% de los casos no hacen ningun cambio en la reserva
+sum(datos$BookingChanges != 0 & datos$IsCanceled == 1) # solo hay un 2.08% de casos que hacen cancelaciones tras haber hecho cambios en la reserva, 14% del total de los que hacen cambios
+# decidimos que no aporta info relevante
+
+sum(datos$IsCanceled  == 1) # dependiente en prediccion, se queda igual 
+```
+
+Eliminamos la variable que hemos considerado poco relevante
+```{r}
+datos <- dplyr::select(datos, - BookingChanges) 
+```
+
+
+```{r}
+unique(datos$CustomerType) # la estudiamos y decidimos que se queda igual
+```
+
+Estudiamos la variable para ver si nos indica la misma informacion que reservation status, vemos que hay 11122 casos que cancelan: 
+```{r}
+sum(datos$IsCanceled == 1) 
+```
+
+```{r}
+sum(datos$ReservationStatus == 'Canceled')
+sum(datos$ReservationStatus == 'No-Show')
+```
+
+En la variable ReservationStatus, hay 10831 casos que cancelan; hay 291 que no coinciden con la variable anterior. Por otro lado, existen 291 casos de no show, que son justo los que faltaban en el campo anterior. Vemos que iscanceled y reservationstatus indican la misma informacion. Por tanto, reservation status se queda tal cual para agrupacion y iscanceled para prediccion
+
+```{r}
+sum(datos$IsRepeatedGuest == 0) # se queda igual
+sum(datos$PreviousCancellations  != 0) 
+sum(datos$PreviousBookingsNotCanceled != 0) 
+sum(datos$PreviousBookingsNotCanceled != 0 & datos$PreviousCancellations  != 0)
+```
+
+Tras este estudio, vemos que existen 2031 casos que repiten, no cancelan; que hay 1095 casos que repiten, y cancelan; y hay 212 casos que vamos a eliminar porq no tienen sentido, se solapan. Se crea una nueva variable con esas dos, que divida entre si hay repeticion o no, y si repite, si han cancelado antes o no (0,1,2)
+
+A continuacion, el codigo utilizado para eliminar los datos que se solapan de la variable: 
+```{r}
+datos$extra <- ifelse((datos$PreviousBookingsNotCanceled != 0 & datos$PreviousCancellations  != 0), 1, 0) ## creamos una nueva variable que siga esas condiciones
+datos <- filter(datos, extra == 0) 
+datos <- dplyr::select(datos, - extra) ## la eliminamos  
+```
+
+```{r}
+datos$Repetir <- ifelse((datos$PreviousBookingsNotCanceled != 0), "RepitenNoCancelan", "NoRepiten") # creamos la nueva variable
+datos$Repetir <- ifelse((datos$PreviousCancellations  != 0), "RepitenCancelan", datos$Repetir)
+
+unique(datos$Repetir) # comprobamos que los datos se han guardado bien
+```
+
+Eliminamos estas tres varuables que ya no necesitamos y reservationstatus date que no la necesitamos
+```{r}
+datos <- dplyr::select(datos, -c(PreviousCancellations, PreviousBookingsNotCanceled, ReservationStatusDate))
+```
+
+```{r}
+unique(datos$Meal) # buscamos los datos que tiene
+sum(datos$Meal == 'Undefined' | datos$Meal == 'SC') # decidimos que las juntamos, y el resto igual con un ifelse 
+# aqui se juntan
+datos$Meal <- ifelse((datos$Meal == 'Undefined' | datos$Meal == 'SC'), "NoMeal", datos$Meal)
+```
+
+```{r}
+sum(datos$RequiredCarParkingSpaces != 0) ## 14%. dicotomica; piden o no piden. 
+sum(datos$TotalOfSpecialRequests != 0) ## 44,2% dicotomica, piden o no piden
+```
+
+```{r}
+sum(datos$StaysInWeekendNights != 0 & datos$StaysInWeekNights == 0) # estudiamos cuantas noches se queda la gente en fin de semana solo 
+sum(datos$StaysInWeekNights != 0 & datos$StaysInWeekendNights == 0 ) # solo entre semana 
+sum(datos$StaysInWeekendNights != 0 & datos$StaysInWeekNights != 0) # tanto fin de semana como entre semana
+```
+
+Creamos nueva variable: se quedan fin de semana o no
+```{r}
+datos$Findes <- ifelse((datos$StaysInWeekendNights != 0 & datos$StaysInWeekNights == 0), "SoloFindes", "Ambos")
+datos$Findes <- ifelse((datos$StaysInWeekNights != 0 & datos$StaysInWeekendNights == 0), "SoloEntreSemana", datos$Findes)
+unique(datos$Findes)
+```
+
+Nos interesa si el hecho de quedarse en fin de semana o entre semana hace mas o menos probable cancelar
+```{r}
+sum(datos$StaysInWeekendNights != 0 & datos$IsCanceled == 1)  
+sum(datos$StaysInWeekNights != 0 & datos$IsCanceled == 1)
+```
+
+```{r}
+unique(datos$StaysInWeekendNights)
+unique(datos$StaysInWeekNights)
+```
+Decidimos hacer nueva variable: noches en total que reservan o se quedan en el hotel. Las dos variables de staysnoche se quitan y se introducen dos nuevas. 
+
+
+```{r}
+datos$TotalDias <- datos$StaysInWeekendNights + datos$StaysInWeekNights # creamos la nueva variable
+unique(datos$TotalDias) # comprobamos que el resultado esta bien 
+datos <- dplyr::select(datos, -c(StaysInWeekendNights, StaysInWeekNights)) # eliminamos las dos originales
+```
+
+Nos interesa también saber si el cliente pide o no parking; la hacemos dicotomica. Hacemos el musnmo estudio con la variable TotalOfSpecialRequests.
+```{r}
+datos$RequiredCarParkingSpaces[datos$RequiredCarParkingSpaces == 0] <- "No"
+datos$RequiredCarParkingSpaces[datos$RequiredCarParkingSpaces != "No"] <- "Si"
+```
+
+```{r}
+datos$TotalOfSpecialRequests[datos$TotalOfSpecialRequests == 0] <- "No"
+datos$TotalOfSpecialRequests[datos$TotalOfSpecialRequests != "No"] <- "Si"
+```
+
+Nos interesa más saber cuanta gente hay que su rango de edad, así que juntamos las tres variables en una y eliminamos las originales
+```{r}
+datos$TotalPersonas <- datos$Adults + datos$Children + datos$Babies 
+datos <- dplyr::select(datos, -c(Adults, Children, Babies)) 
+```
+
+Para calcular con cuanto tiempo en total el cliente hizo la reserva, creamos una nuevva variable combinando LeadTime y DaysInWaitingList llamada Anticipacion_reserva y eliminamos las originales.
+```{r}
+datos$Anticipacion_reserva <- datos$LeadTime + datos$DaysInWaitingList 
+datos <- dplyr::select(datos, -c(LeadTime, DaysInWaitingList)) 
+```
+
+Decidimos quedarnos el país de los clientes, a pesar de que la gran mayoria de los clientes son portugueses y casi la mitad de las cancelaciones son suyas, por un posible defecto en la recopilacion de datos
+```{r}
+sum(datos$Country == 'PRT') 
+sum(datos$Country == 'PRT' & datos$IsCanceled == 1)
+sum(datos$IsCanceled)
+```
+
+Gardamos la base de datos final en un archivo csv para utillizarla en los siguientes estudios.
+```{r}
+write.csv(datos, file = "Datos_Finales.csv", row.names = FALSE) 
+```
+
+

@@ -1,0 +1,162 @@
+---
+title: "NBA Practica"
+author: "Lucia Saiz Lapique" 
+date: "15/10/2019"
+output: html_document
+---
+
+```{r}
+nba <- read.csv("C:/Users/Luli/Downloads/nba.csv")
+nba <- na.omit(nba)
+library(dplyr)
+library(leaps)
+library(MASS)
+library(car)
+library(ISLR)
+library(gvlma)
+ 
+names(nba)[3] <- "Country"
+names(nba)[4] <- "Ranking"
+names(nba)[6] <- "Equipo"
+names(nba)[7] <- "Partidos"
+names(nba)[8] <- "Minutos"
+names(nba)[9] <- "Eficiencia"
+names(nba)[10] <- "Aciertos"
+names(nba)[11] <- "Triple_Intento"
+names(nba)[12] <- "Intento_Libre"
+names(nba)[13] <- "Rebote_Ofensa"
+names(nba)[14] <- "Rebote_Defensa"
+names(nba)[15] <- "Rebotes_Total"
+names(nba)[16] <- "Asistencia"
+names(nba)[17] <- "Robo"
+names(nba)[18] <- "Bloqueos"
+names(nba)[19] <- "PerdidaBalon"
+names(nba)[20] <- "Jugar_Equipo"
+names(nba)[21] <- "Ataque_Acertado"
+names(nba)[22] <- "Defensa_Acertada"
+names(nba)[23] <- "AciertosTotal"
+names(nba)[24] <- "Aciertos48"
+
+
+
+```
+
+En primer lugar, descargamos la base de datos, llamamos a las librerias que vamos a utilizar y renombramos a las variables de la base de datos para saber en todo momento de qué variables estamos hablando. 
+
+
+
+```{r}
+
+Modelo1 <- lm(Salary ~. - (Player + Country + Equipo), data = nba)
+summary(Modelo1)
+
+```
+
+Después, creamos el primer modelo utilizando todas las variables de la base de datos nba, sin contar jugador, equipo y país porque, al ser variables de caracteres, no lee R la información como digitos que puede agrupar o con los que puede calcular. Con este modelo nos dice que las variables más relevantes son Ranking, Age, Partidos y Minutos, pero necesitamos un estudio más a fondo para sacar conclusiones claras.  
+
+
+
+
+
+FORWARD MODEL
+```{r}
+
+Metodo_Forward <- regsubsets(Salary~.-(Player + Equipo + Country), nba, method = "forward")
+summary(Metodo_Forward) 
+
+```
+```{r}
+
+Modelo2 <- lm(Salary ~ (Ranking + Age + Partidos + Minutos + Rebote_Defensa + Jugar_Equipo + AciertosTotal + VORP), data = nba)
+Modelo2
+
+```
+
+Iniciamos el primero modelo con el metodo forward para reducir variables irrelevantes. Tras ese metodo, sacamos la conclusion de que solo son relevantes, a primera vista, las 8 variables con las que creamos el segundo modelo de este codigo. 
+
+
+
+
+CROSS VALIDATION: Validation Set
+```{r}
+
+set.seed(7)
+Datos <- nrow(nba)
+Validation <- sample(Datos ,Datos/2)
+
+Modelo3 <- lm(Salary~ Ranking + Age + Partidos + Minutos + Rebote_Defensa + 
+    AciertosTotal + VORP,nba ,subset = Validation)
+attach(nba)
+mean((Salary - predict(Modelo3 ,Auto))[-Validation]^2)
+
+```
+
+Tras obtener las variables relevantes para generar el sueldo de los jugadores, hacemos un cross-validation del tipo validation set para seguir quitando variables. Utilizo 7 variables aleatorias en el set seed porque son las que me ha dado el modelo forward.
+
+```{r} 
+set.seed(6)
+
+Modelo3 <- lm(Salary~ (Ranking + Age + Partidos + Minutos + Rebote_Defensa + 
+    AciertosTotal),nba,subset = Validation)
+
+media <- mean((Salary - predict(Modelo3 ,Auto))[-Validation]^2)
+media 
+```
+
+Elimino una variable(la menos relevante en el forward) para ajustar el error con la validacion utilizando 6 variables aleatorias. Nos da como resultado un error al que le tenemos que sacar la raiz cuadrada. 
+
+```{r}
+sqrt(media)
+```
+Finalmente hago la raiz cuadrada del error obtenido y sale un error de unos 5 millones de euros. Sigue siendo un error muy grande, así que continuamos el estudio para mejorar el modelo teniendo en cuenta la multicolinealidad. 
+
+
+```{r}
+Multicolinealidad <- vif(Modelo3)
+Multicolinealidad
+```
+
+Con el modelo obtenido en la validación, estudiamos multicolinealidad para estudiar la codependencia de las variables. Queremos que haya la menor multicolinealidad posible, así que el siguiente paso sería eliminar las variables que hacen que exista codependencia. 
+
+```{r}
+sqrt(Multicolinealidad) > 2
+```
+
+En este caso, tanto "Partidos" como "Minutos" tienen multicolinealidad, con lo cual las vamos eliminando una a una. La primera que decido eliminar es Minutos, porque al mirar los valores de cada variable, esa es la que tiene el valor mayor, con lo cual debe ser la menos relevante.
+
+```{r}
+Modelo4 <- lm(Salary~ (Ranking + Age + Partidos + Rebote_Defensa + AciertosTotal), nba,subset = Validation)
+
+vif(Modelo4)
+sqrt(vif(Modelo4)) > 2
+```
+
+Creamos el nuevo modelo sin la variable Minutos y obtenemos resultados satisfactorios. Efectivamente, Minutos era la variable menos relevante para el modelo, y al eliminarla, la variable partidos ya no da señales de multicolinealidad. Podemos avanzar con las 5 variables que acabamos de obtener. 
+
+
+```{r}
+BIC(Modelo1, Modelo4)
+```
+Con BIC comparamos la diferencia de error desde que empezamos con el primer modelo que usaba todas las variables, hasta el último paso que acabamos de realizar. Sale mucho menos error con el último modelo estudiado, tras el metodo forward, el cross validation y estudiando la multicolinealidad, que directamente el primero, lo cual nos indica que hemos escogido variables acertadas para calcular los sueldos. 
+
+```{r}
+qqPlot(Modelo4, labels = row.names(nba), id.method = "identify",
+       simulate = TRUE, main = "Q-Q Plot")
+```
+Dibujamos un gráfico que represente nuestro modelo final, en el que podemos ver como la gran mayoría de las variables estan ajustadas a nuestro modelo, ya que están sobre la linea de regresión, exceptuando a unas pocas que se quedan fuera. 
+
+
+```{r}
+ModeloFinal <- gvlma(Modelo4)
+summary(ModeloFinal)
+```
+
+```{r}
+predict.lm(Modelo4, data.frame(Ranking = 4, Age = 30, Partidos = 70, Rebote_Defensa = 14.0, AciertosTotal = 1.7))   
+```
+
+```{r}
+predict.lm(Modelo4, data.frame(Ranking = 3, Age = 37, Partidos = 74, Rebote_Defensa = 7.9, AciertosTotal = 5.8))
+```
+
+Por último, para probar el modelo que hemos elegido y creado, introducimos los datos de las variables que consideramos relevantes de un jugador al azar en el modelo para que nos prediga su sueldo. En este caso, se ha probado con los jugadores Wesley Johnson y Pau Gasol, que el modelo predice un sueldo con un error de unos 2 millones de dolares de más para ambos.

@@ -1,0 +1,289 @@
+---
+title: "Fundamentos"
+author: "Lucia Saiz Lapique"
+date: "4/2/2020"
+output: pdf_document
+---
+
+# EJERCICIO 1
+
+```{r, message = FALSE}
+library(dplyr)
+library(tidyverse)
+library(skimr)
+library(ggplot2)
+library(vcd)
+load("C:/Users/Luli/Downloads/easySHARE_rel7_0_0.rda")
+data <- easySHARE_rel7_0_0
+data <- filter(data, wave == 7 | wave == 6)
+```
+
+Las tres variables seleccionadas son: 
+
+iv009_mod: Area of Location. Contains information on the area of the building where the interview took place. It is filtered if the interview was not conducted in the respondents´ home (information taken from ho001_). Additionally, information was transferred from the household respondent to the other household members.
+1: A big city
+2: The suburbs or outskirts of a big city
+3: A large town
+4: A small town
+5: A rural area or village
+
+isced1997_r stores the ISCED-97 coding of education. The values are:
+0: none
+1: Level 1 – Primary education or first stage of basic education
+2: Level 2 – Lower secondary or second stage of basic education
+3: Level 3 – (Upper) secondary education
+4: Level 4 – Post-secondary non-tertiary education
+5: Level 5 – First stage of tertiary education
+6: Level 6 – Second stage of tertiary education
+95: still in school
+96: other
+
+mar_stat: The marital status is only asked in the baseline interview of each respondent (dn014_). In later regular waves the respondents are asked if their status has changed or not (dn044). If it has not changed we forwarded the information of dn014_ to later waves. If it has changed, respondents are asked again for their current status. New since easySHARE release 6.0.0 is that information on widowhood and divorce from wave 3 was used to update the marital status in later waves.
+0: none
+1: married and living together with spouse
+2: registered partnership
+3: married, living separated from spouse
+4: never married
+5: divorced
+6: widowed
+
+
+female Gender of respondent
+female is the “dummy”-style coded gender variable. 0: male; 1: female. For very few respondents gender varies between waves. These are mostly cases that have not been fully checked yet. There is no way to determine the correct information, therefore we coded these respondents’ gender to -3 “implausible value” in all instances.
+
+casp CASP-12 score (Quality of life)
+The CASP-12 score measures quality of life and is based on four subscales on control, autonomy, pleasure and self-realization. The CASP score is the sum of these four subscales and ranges from 12 to 48. The items were asked in the drop off questionnaire in wave 1 and then moved into the CAPI from wave 2 onwards. For drop off questionnaires not being filled in by all respondents there is a higher fraction of missing observations in wave 1.
+
+
+Decidimos reducir la base de datos a las variables que vamos a utilizar en el estudio a continuación. Después, para facilitar el análisis de las relaciones que existen entre las variables objetivo y las seleccionadas, decidimos crear una base de datos nuevas para cada variable elegida, junto con las dos dependientes. 
+```{r}
+final = select(data, iv009_mod, isced1997_r, mar_stat, female, casp)
+location = select(final, casp, iv009_mod, female)
+education = select(final, casp, isced1997_r, female)
+marriage = select(final, casp, mar_stat, female)
+```
+
+
+## EDA 
+
+Para el tratamiento de las variables, tenemos en cuenta los valores a continuacióm que deseamos eliminar:
+
+Missing codes
+Compared to the SHARE main release we recoded the missing values in easySHARE to one of the following (partially new) codes:
+-3: “implausible value/suspected wrong” 
+-7: “not yet coded”
+-9: “not applicable filtered”
+-10: “SHARELIFE interview” (only in wave 7)
+-11: “regular interview” (only in wave 7)
+-12: “don’t know / refusal” 
+-13: “not asked in this wave” 
+-14: “not asked in this country” 
+-15: “no information” 
+-16: “no drop-off (information in drop-off in this wave)”
+
+A continuación se decide eliminar todos los campos negativos de las variables en cuestión para que no alteren los resultados del estudio y se comprueba que no haya valores nulos.
+
+```{r}
+unique(final$iv009_mod)
+location = filter(location, iv009_mod > 0)
+unique(location$iv009_mod)
+table(is.na(location))
+```
+
+```{r}
+unique(final$isced1997_r)
+education = filter(education, isced1997_r >= 0)
+unique(education$isced1997_r)
+table(is.na(education))
+```
+
+```{r}
+unique(final$mar_stat)
+marriage = filter(marriage, mar_stat >= 0)
+unique(marriage$mar_stat)
+table(is.na(marriage))
+```
+
+Renombramos las categorias de las variables cualitativas y el nombre de cada variable para facilitar su uso en el estudio de posibles relaciones existentes. 
+
+```{r}
+names(final) <- c("Area_Location", "Education", "Marriage_Status", "Gender", "CASP")
+names(location) <- c("CASP","Area_Location", "Gender")
+names(education) <- c("CASP","Education", "Gender")
+names(marriage) <- c("CASP","Marriage_Status", "Gender")
+```
+
+```{r}
+location$Gender <- factor(x = location$Gender, levels = c(0,1), labels = c("Hombre", "Mujer"))
+education$Gender <- factor(x = education$Gender, levels = c(0,1), labels = c("Hombre", "Mujer"))
+marriage$Gender <- factor(x = marriage$Gender, levels = c(0,1), labels = c("Hombre", "Mujer"))
+```
+
+```{r}
+location$Area_Location <- factor(x = location$Area_Location, levels = c(1,2,3,4, 5), labels = c("gran_ciudad","suburbio/afueras","pueblo grande","pueblo_peq", "rural"))
+
+education$Education <- factor(x = education$Education, levels = c(0, 1,2,3,4,5,6,95, 97), labels = c("ninguno", "primaria","eso","secundaria","post-secundaria","terciaria_primero","terciaria_segundo", "estudiante", "otro"))
+
+marriage$Marriage_Status<-factor(x= marriage$Marriage_Status, levels = c(1,2,3,4,5,6), labels = c("casado_juntos", "pareja", "casado_separado", "soltero", "divorciado", "viudo"))
+```
+
+
+## Relaciones de variables con CASP
+
+
+
+```{r}
+hist(net_income$CASP, breaks = 50, main = "Distribución de variable CASP", xlab = "Calidad de Vida")
+```
+
+no es paramétrica = no sigue una distribución normal
+
+Prueba de normalidad de las variables:
+```{r}
+ks.test(x = net_income$CASP, "pnorm", mean(net_income$CASP), sd(net_income$CASP))
+```
+
+Hipotesis nula: que hay normalidad. Es inferior a 0.05, con lo cual se rechaza la hipotesis nula asi que no sigue una distribución normal en ninguno de los casos
+
+
+No hay evidencias de homogeneidad de varianzas. Tenemos que irnos al test en caso de no paramétrico porque la variable numérica no sirve una distribución normal. El levene test no es necesario porq eso ya lo sabiamos de antes. Ejecutamos el test de kruskal para estudiar la significancia en diferencia de medias de las categrías que componen las variables cualitativas. 
+
+```{r}
+kruskal.test(CASP ~ as.factor(Area_Location), data = location)
+```
+El test encuentra significancia en la diferencia de al menos dos grupos.
+
+```{r}
+pairwise.wilcox.test(x = location$CASP, g = location$Area_Location, p.adjust.method = "bonferroni" )
+```
+Hay diferencias significativas entre todos los grupos excepto con entre pueblo pequeño y rural.
+
+
+
+```{r}
+kruskal.test(CASP ~ as.factor(Education), data = education)
+```
+El test encuentra significancia en la diferencia de al menos dos grupos.
+
+```{r}
+pairwise.wilcox.test(x = education$CASP, g = education$Education, p.adjust.method = "bonferroni" )
+```
+Hay diferencias significativas entre todos los grupos, excepto entre secundaria y post-secundaria, y entre terciaria primera fase y terciaria segunda fase. 
+
+
+```{r}
+kruskal.test(CASP ~ as.factor(Marriage_Status), data = marriage)
+```
+El test encuentra significancia en la diferencia de al menos dos grupos. Para calcular entre cuantos hay verdaderamente, ejecutamos el test de pairwise wilcox.
+
+```{r}
+pairwise.wilcox.test(x = marriage$CASP, g = marriage$Marriage_Status, p.adjust.method = "bonferroni" )
+```
+Existen diferencias significativas en todos menos entre casados y viviendo juntos y pareja registrada.
+
+
+## Relaciones de variables con el género
+
+Tabla de contingencia (categoricas con categoricas), chi cuadrado para ver si las diferencias son significativas. 
+
+```{r}
+tabla <- table(location$Gender, location$Area_Location)
+tabla
+```
+Test de chi squared
+```{r}
+chi1 <- chisq.test(tabla)
+chi1
+```
+H0: Independencia. H1: Dependencia. Aceptamos la hipótesis nula, asi que existe independiencia entre las variables. 
+
+```{r}
+chi1$stdres
+```
+Residuos tipificados dentro del rango de -1,96 y 1,96; hay sobrerrepresentacion de mujeres en el caso de la gran ciudad y en pueblos grandes, y de hombres en la zona rural y suburbios. Sin embargo, no son muy grandes. 
+
+```{r}
+library(vcd)
+assocstats(tabla)
+```
+Valor muy bajo
+
+```{r}
+tabla2 <- table(education$Gender, education$Education)
+tabla2
+```
+
+```{r}
+chi2 <- chisq.test(tabla2)
+chi2
+```
+Es estadísticamente significativo
+```{r}
+library(vcd)
+assocstats(tabla2)
+```
+Fuerza de asociacion es muy baja porque es menor que 0.3 y muy cercana a 0. Hay q mirar el v de cramer
+
+```{r}
+chi2$stdres
+```
+Sobrerepresentacion de mujeres en varios y de hombres en otras. Baja. Solo es estadisticamente significativo el que es mayor que 1.96
+
+
+Tabla de contingencia de la tercera variable cualitativa
+```{r}
+tabla3 <- table(marriage$Gender, marriage$Marriage_Status)
+tabla3
+```
+
+Test chi-cuadrado
+```{r}
+chi3 <- chisq.test(tabla3)
+chi3
+```
+Existe relación estadísticamente significativa
+
+```{r}
+library(vcd)
+assocstats(tabla3)
+```
+La fuerza de relación es más alta que las anteriores; casi 0.3. 
+
+
+```{r}
+chi3$stdres
+```
+residuos tipificados
+Proporciones distintas significativas entre un grupo y otro.
+
+
+
+# EJERCICIO 2
+
+Para generar la matriz, calculamos cuantas lineas debe haber para tener cuatro columnas
+
+```{r}
+144708/4
+```
+generaamoms la matriz con los datos de la variable en cuestión
+```{r}
+matriz = matrix(final$CASP, nrow = 36177, byrow = TRUE)
+```
+
+
+
+Ejecutamos el código para generar la matriz de transición de Markov y su cadena. 
+```{r}
+library(markovchain)
+
+matriz.trans <- new("markovchain", transitionMatrix = matriz, 
+                    #states = c((valores<35), (35<=valores & valores<37), (37<=valores & valores<39), 
+                            #   (valores>39)), name = "Cadena de Markov")
+plot(matriz.trans)
+steadyStates(matriz.trans)
+```
+
+```{r}
+situacion_inicial * matriz.trans^5
+```
+

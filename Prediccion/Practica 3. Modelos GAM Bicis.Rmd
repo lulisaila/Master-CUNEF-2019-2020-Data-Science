@@ -1,0 +1,292 @@
+---
+title: "Bike Sharing"
+author: "Lucia Saiz Lapique"
+date: "22/10/2019"
+output: pdf_document
+---
+
+# Indice
+## Introducción
+## Librerías y base de datos
+## Gráficos de correlación
+## Modelos GAM 
+## Comparación modelos
+## Cross validation: Train y test 
+## Predicción
+
+---------
+INTRODUCCIÓN:
+---------
+
+A continuación, realizaremos un estudio de la base de datos "day", conjunto de datos que representa las bicicletas que se utilizaron durante dos años y numerosas caracteristicas de cada uso, entre ellas fecha, tipo de uso, temperatura en el día que se utilizaron, etc. El objetivo es calcular un modelo que calcule cuántas bicicletas se utilizan por día, basandonos en las características que se dieron los días que se utilizaron esas bicicletas los últimos años. Contamos con una base de datos en la que se incluyen 731 muestras con 16 variables, que son categóricas y numéricas. 
+
+Las variables categóricas como los meses, los años o el tiempo que hacía deberán factorizarse para usarse tanto en los gráficos como al generar los modelos. La mayor parte de las variables son de tipo numérico, lo cual facilita su uso a la hora de buscar grados de libertad, por ejemplo.
+
+Para averiguar cuál es el modelo más preciso, realizamos previamente un estudio de los datos. Debemos identificar qué variables son catégoricas, dummies (1, 0) y numéricas, además de buscar la correlación entre ellas. Debemos señalar que la correlación solo podrá ser estudiada en las variables numéricas, pues entre variables catégoricas no es posible. 
+
+Tras eso, antes de ir directamente a la predicción del error medio, creamos un modelo que incluya a todas las variables, para, de ahí, empezar a descartar las no relevantes. Utilizaremos el método "gam", que utiliza el grado de libertad de cada variable para estimar su relevancia en el modelo. 
+
+Después, realizaremos un método de validación para entender con cuánto margen de error contamos e intentar reducirlo más adelante. Finalmente, hacemos un entrenamiento y un test para poder hacer la predicción del error medio que nos dará nuestro modelo al intentar predecir el número de bicis que se usan al día según las variables que hemos seleccionado. 
+
+A continuación, nos descargamos la base de datos que queremos utilizar con read_csv y la metemos en un nuevo objeto para facilitar su uso y llamamos a todas las librerías que vamos a utilizar durante el trabajo.
+
+-----------
+LIBRERÍAS Y BASE DE DATOS:
+-----------
+
+Hacemos un pequeño resumen de los datos en el que vemos cosas muy generales como valores mínimos y máximos o la media de cada variable. A simple vista esto no nos proporciona mucha información acerca de las variables que son más o menos relevantes para nuestro modelo, pero nos ayuda a ver cuáles son catégoricas o dummies y que después tendremos que descartar al hacer correlaciones, por ejemplo. 
+
+```{r, echo = FALSE, message = FALSE}
+#Librerias
+library(readr)
+library(magrittr)
+library(splines)
+library(MASS)
+library(ggplot2)
+library(reshape2)
+library(knitr)
+library(ggplot2)
+library(gam)
+
+library(here)
+library(tidyverse)
+library(skimr) # Beautiful Summarize
+library(magrittr) # Pipe operators
+library(corrplot) # Correlations
+library(ggcorrplot)  # Correlations
+library(PerformanceAnalytics) # Correlations
+library(leaps) # Model selection
+library(caret) # Cross Validation
+library(bestglm) # Cross Validation
+library(glmnet) # Regularization
+library(rsample)
+library(dplyr)
+library(boot)
+library(readr)
+
+day <- read_csv("day.csv")
+```
+
+```{r, echo = FALSE}
+summary(day)  
+```
+
+Como vemos, las variables que son categóricas son "season", "month", "weekday", y "weathersit"; las dummies son "yr", "holiday" y "workingday". Aunque, en teoría son variables que perfectamente podrían afectar al resultado de nuestra predicción y a tener en cuenta para hacer el modelo; sin embargo, para el siguiente paso, que es analizar los datos y sacar correlaciones entre ellos, estas variables nos dan problemas. 
+
+La correlación de variables muestra tendencias de crecimiento cuando las variables a comparar tienen valores mayores y de descenso cuando los valores osn menores. Sin embargo, en las variables categóricas, se les asocia un valor que representa la característica específica de ese modelo, cuyo valor "numérico" no es representativo del valor calificativo que tienen. Por ello, en los gráficos a continuación no incluiremos estas variables. 
+
+--------
+GRÁFICOS DE CORRELACIÓN:
+--------
+
+## PRIMER GRÁFICO:
+
+Eliminamos las variables instant y dteday poruqe son variables que R no es capaz de reconocer como valores. 
+
+```{r, echo = FALSE}
+# Excluded vars (factor)  # Eliminamos indices de registro y dteday que es factor
+
+vars <- c("instant","dteday","season", "mnth", "weekday", "weathersit", "yr", "holiday", "workingday")
+corrplot(cor(day %>% 
+               select_at(vars(-vars)), 
+             use = "complete.obs"), 
+         method = "circle",type = "upper")
+```
+Vemos que las correlaciones más grandes, primero de todo, existen entre las variables "temp" y "atemp", lo cual tiene sentido porque representan la temperatura y la sensación térmica; no soprende que tengan tendencias muy similares. Vemos también que las variables "casual" y "registered" están muy hiladas a "cnt"; esto también es obvio porque esas dos variables representan el número de bicicletas utilizadas de forma casual o por gente que está registrada en la página; cnt es la suma de las dos. Es normal que estén relacionadas. 
+
+La única información "relevante" que sacamos de esta gráfica es que existe relación entre la temperatura que hacía el día en el que se cogieron esas bicicletas y el número de bicicletas utilizadas. También existe una pequeña relación entre la velocidad del viento ese día y las bicicletas que se utilizaron. 
+
+
+## SEGUNDO GRÁFICO:
+
+```{r, echo = FALSE}
+# Other Correlations
+
+ggcorrplot(cor(day %>% 
+                 select_at(vars(-vars)), 
+               use = "complete.obs"),
+           hc.order = TRUE,
+           type = "lower",  lab = TRUE)
+```
+
+En este gráfico vemos correlaciones parecidas a las del gráfico anterior; sin tener en cuenta las relaciones obvias de antes, vemos que las variables temperatura y sensación térmica son las que mayor relación tienen con las bicicletas utilizadas en esos días, tanto casuales como regustradas y su total. 
+
+## TERCER GRÁFICO:
+
+```{r, echo = FALSE, warning = FALSE}
+chart.Correlation(day %>% 
+                    select_at(vars(-vars)),
+                  histogram=TRUE, pch=14)
+
+```
+Este último gráfico de correlaciones nos muestra lo mismo que veíamos en los anteriores; que la mayor relación que afecta al número de bicicletas utilizadas en ciertos días son la temperatura y la sensación térmica. Vemos también cierta correlación (0.23) entre la velocidad del viento y las bicicletas que se usaron, como pudimos ver también en el primer gráfico. 
+
+Una vez estudiados brevemente, pasamos a la creación del modelo de predicción utilizando el método GAM. 
+
+----------
+MODELOS GAM:
+----------
+
+
+## GRADOS DE LIBERTAD:
+
+Antes de hacer el estudio oficial del modelo en cuestión, debemos tomar la primera decisión. Al usar GAM, podemos utilizar dos formas: sacar polinomios o grados de libertad. Decidimos usar grados de libertad pues es la opción más fácil; de esta forma podemos directamente meter los grados de libertado (DOF) en el modelo al crearlo y es mucho más preciso. 
+
+Tras calcular los DOF de las variables numéricas, sin contar cnt (ya que es la que queremos predecir con el modelo) y las variables registered y casual (ya que la suma de ellas dos es la variable que queremos predecir y el modelo saldría sobre ajustado), obtenemos los siguientes resultados respectivamente de la temperatura, sensación térmica, la humedad y de la velocidad del viento: 
+
+```{r, echo = FALSE, warning = FALSE}
+
+temp_df <- smooth.spline(day$temp, day$cnt,cv=TRUE)
+temp_df$df
+
+atemp_df <- smooth.spline(day$atemp, day$cnt,cv=TRUE)
+atemp_df$df
+
+humedad_df <- smooth.spline(day$hum,day$cnt, cv=TRUE)
+humedad_df$df
+
+velviento_df <- smooth.spline(day$windspeed, day$cnt,cv=TRUE)
+velviento_df$df
+```
+
+
+A continuación hacemos un gráfico que me relacione las bicicletas que se usaron en ciertos días con la velocidad del viento y que, además, haga una comparación entre esa misma variable con unos DOF mucho mayores (extremo), donde podremos comprobar si existe algún tipo de overfitting. 
+```{r,  echo = FALSE, warning = FALSE}
+#Ejemplo gráfico cogiendo la variable "windspeed"
+
+velvvientodf <- smooth.spline(day$windspeed,day$cnt, cv=TRUE)
+fitvelviento <- smooth.spline(day$windspeed,day$cnt, df=20)
+
+plot(day$windspeed, day$cnt, xlim=range(day$windspeed), col='gray')
+lines(fitvelviento, col='red', lwd=2)
+lines(velvvientodf, col='blue', lwd=1)
+legend('topleft', legend=c('20 DF', '6 DF'),
+       col=c('red','blue'), lty=1, lwd=2, cex=0.8)
+```
+
+Vemos como el modelo que utiliza 20 DOF sale sobre ajustado en comparación con el nuetsro, lo cual nos sugiere que por ahora vamos en buen camino. 
+
+## PRIMER MODELO GAM
+
+Creamos el primer modelo usando el método GAM, donde introducimos todas las variables posibles. En este caso eso incluye las variables numéricas (a las que se le aplica su respectivo DOF), las categóricas (que hemos factorizado) y las dummies. Descartamos de nuevo cnt, registered y casual, que seguiremos descartando de aquí en adelante, porque en caso contrario nos daría un modelo con overfitting.  
+
+```{r, echo = FALSE, warning = FALSE}
+Modelo_GAM_1 <- gam(cnt ~ yr + as.factor(mnth) + s(temp, 9.103704) + s(atemp, 8.805497) + s(hum, 4.548876) + s(windspeed, 6.007664) + as.factor(weekday) + as.factor(season) + as.factor(weathersit) + workingday + holiday, data=day)
+par(mfrow = c(2,3))
+plot(Modelo_GAM_1, se=TRUE, col='pink')
+```
+```{r, echo = FALSE, results = FALSE}
+summary(Modelo_GAM_1)
+```
+
+Los gráficos representan como de ajustada está cada variable al modelo. Vemos como hay variables que nos aportan valores lineales o alguna como holiday que directamente no aporta ninguna información. En base a esto y a un breve resumen que hemos creado dell modelo, comenzamos a decidir qué variables vamos a eliminar en los siguientes modelos que puedan ser irrelevantes. 
+
+## SEGUNDO MODELO GAM
+
+En el segundo modelo, decidimos eliminar las variables "dummies", para ver si existe mucha diferencia o si nos reducen el error residual. 
+```{r, echo = FALSE, warning = FALSE}
+Modelo_GAM_2 <- gam(cnt ~ as.factor(mnth) + s(temp, 9.103704) + s(atemp, 8.805497) + s(hum, 4.548876) + s(windspeed, 6.007664) + as.factor(weekday) + as.factor(season) + as.factor(weathersit), data=day)
+```
+
+## TERCER MODELO GAM
+
+El tercer modelo elimina las variables categóricas, de la misma forma que el anterior (el segundo), para comprobar si el error disminuye por prescindir de ellas. 
+
+```{r, echo = FALSE, warning = FALSE}
+Modelo_GAM_3 <- gam(cnt ~ yr + s(temp, 9.103704) + s(atemp, 8.805497) + s(hum, 4.548876) + s(windspeed, 6.007664) + workingday + holiday, data=day)
+
+```
+
+## CUARTO MODELO GAM
+
+En el cuarto modelo decidimos eliminar las variables holiday y atemp, pues son las que el primer modelo GAM nos ha dicho que son las menos influyentes en el modelo. 
+
+```{r, echo = FALSE, warning = FALSE}
+Modelo_GAM_4 <- gam(cnt ~ yr + as.factor(mnth) + s(temp, 9.103704) + s(hum, 4.548876) + s(windspeed, 6.007664) + as.factor(weekday) + as.factor(season) + as.factor(weathersit) + workingday, data=day)
+```
+
+## QUINTO MODELO GAM
+
+En el quinto modelo decidimos hacer una regresión lineal como las que hicimos en otras ocasiones. 
+
+```{r, echo = FALSE, warning = FALSE}
+Modelo_GAM_5 <- lm(cnt ~ yr + as.factor(mnth) + s(temp, 9.103704) + s(atemp, 8.805497) + s(hum, 4.548876) + s(windspeed, 6.007664) + as.factor(weekday) + as.factor(season) + as.factor(weathersit) + workingday + holiday, data=day)
+```
+
+----------
+COMPARACIÓN DE MODELOS: ANOVA
+----------
+
+Tras formar nuestros cinco modelos, utilizamos la función anova para que nos indique cuál es el modelo que tiene el menor error residual y que será, en consecuencia, el que utilicemos para nuestra predicción. Los resultados son los siguientes:
+
+```{r, echo = FALSE}
+anova(Modelo_GAM_1, Modelo_GAM_2, Modelo_GAM_3, Modelo_GAM_4, Modelo_GAM_4, test='F')
+```
+
+Tras anova, vemos como el mejor modelo es el primero que hicimos con todas las variables y el segundo mejor es el segundo modelo, en el que eliminamos las variables dummies. Con esto en mente, pasamos al siguiente paso que es la validación de los modelos.
+
+-----------
+CROSS VALIDATION: TRAIN Y TEST
+-----------
+
+Realizamos el entrenamiento y testing de nuestro primer modelo para hacer cross validation y obtener un error final para luego comparar con el segundo mejor modelo (ell segundo de los cinco que creamos). 
+```{r, echo = FALSE, warning = FALSE}
+# train y test
+
+set.seed(123) # nos permite que al replicar, nos salga a todos lo mismo, replicar el resultado
+day_split <- initial_split((day), prop = .7, strata = "cnt")
+day_train <- training(day_split)
+day_test  <- testing(day_split)
+```
+
+```{r, echo = FALSE, warning = FALSE}
+GAM_train <- gam(cnt ~ yr + as.factor(mnth) +s(temp, 9.103704) + s(atemp, 8.805497) + s(hum, 4.548876) + s(windspeed, 6.007664) + as.factor(weekday) + as.factor(season) + as.factor(weathersit) + workingday + holiday, data=day_train) 
+```
+
+
+```{r, echo = FALSE, warning = FALSE}
+cross_val <- cv.glm(day_train, GAM_train, K = 10)$delta[1]
+```
+
+```{r echo = FALSE, results = FALSE}
+sqrt(cross_val)
+```
+
+Después de cross validation, llegamos a la conclusión de que nuestro Modelo GAM 1 da un error de 636.6063 (en el training). Como error está bien, pero calculamos por si acaso el error que nos genera el segundo mejor modelo. 
+
+```{r echo = FALSE, warning = FALSE}
+GAM_train2 <- gam(cnt ~ as.factor(mnth) + s(temp, 9.103704) + s(atemp, 8.805497) + s(hum, 4.548876) + s(windspeed, 6.007664) + as.factor(weekday) + as.factor(season) + as.factor(weathersit), data=day_train)
+```
+
+```{r, echo = FALSE, warning = FALSE}
+cross_val2 <- cv.glm(day_train, GAM_train2, K = 10)$delta[1]
+```
+
+```{r echo = FALSE, results = FALSE}
+sqrt(cross_val2)
+```
+
+Cross validatin del segundo modelo nos da un error de 1203.066, que al ser mayor que el que obtenemos con el primer modelo, no nos interesa. Decidimos entonces hacer la predicción con el primer modelo que hemos calculado. 
+
+--------
+PREDICCIÓN:
+--------
+Creamos el modelo de predicción con el que obtenemos que el valor del error final de nuesttro modelo al cuadrado es el siguiente: 
+
+```{r, echo = FALSE, warning = FALSE}
+predict_day_gam <- predict(GAM_train,day_test)
+test_error_gam <- mean((predict_day_gam - day_test$cnt)^2)
+test_error_gam
+```
+
+Después, sacamos la raiz cuadrada de ese valor para averiguar el error residual real medido en bicicletas que generaría nuestro modelo y obtenemos lo siguiente:
+
+```{r, echo = FALSE}
+sqrt(test_error_gam)
+```
+
+Finalmente, el train y test nos permite predecir que, con nuestro mejor modelo, se generaría un error de 777.9759 bicicletas. 
+Como conclusión, podríamos decir que el modelo que hemos elegido es válido para predecir el número de bicicletas que se usan al día, pero tendríamos que tener en cuneta que dicha predicción podría llevar asociado a ella un error de hasta 778 bicicletas. 
+
+
+
